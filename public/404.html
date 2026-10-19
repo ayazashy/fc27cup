@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>كأس السكن: FC27 | تحويل المسار</title>
+    <script>
+      // SPA Router redirect for GitHub Pages
+      (function() {
+        var pathSegmentsToKeep = 1; // repository name on github.io/<repo>/
+        var l = window.location;
+        var pathname = l.pathname;
+        var search = l.search;
+        var hash = l.hash;
+
+        // If path has /KSUHTSTAFF, pass it as query parameter to index.html
+        var isKsuStaff = pathname.toUpperCase().indexOf('KSUHTSTAFF') !== -1;
+        var redirectQuery = isKsuStaff ? '?KSUHTSTAFF' : '';
+
+        // Extract repository prefix if on GitHub Pages (e.g. /<repo>/)
+        var parts = pathname.split('/').filter(Boolean);
+        var repoPrefix = parts.length > 0 ? '/' + parts[0] + '/' : '/';
+
+        l.replace(repoPrefix + redirectQuery + (search && !isKsuStaff ? search : '') + hash);
+      })();
+    </script>
+  </head>
+  <body style="font-family: sans-serif; text-align: center; padding: 40px; background: #0F172A; color: #FFF;">
+    <p>جاري تحويلك إلى نظام بطولة كأس السكن FC27...</p>
+  </body>
+</html>

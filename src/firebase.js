@@ -4,7 +4,8 @@ import {
   doc, 
   setDoc, 
   getDoc, 
-  onSnapshot 
+  onSnapshot,
+  runTransaction
 } from "firebase/firestore";
 
 // Firebase credentials for fc27cup
@@ -26,12 +27,15 @@ export const TOURNAMENT_DOC_ID = "ksu_housing_fc27_main";
 
 /**
  * Save full tournament state to Firestore
+ * Uses the dynamic authenticated secret from admin decryption
  */
-export async function saveTournamentToFirestore(data) {
+export async function saveTournamentToFirestore(data, customSecret) {
   try {
     const docRef = doc(db, "tournaments", TOURNAMENT_DOC_ID);
+    const codeToSend = customSecret || '';
     await setDoc(docRef, {
       ...data,
+      secretCode: codeToSend,
       updatedAt: new Date().toISOString()
     }, { merge: true });
     return { success: true };
@@ -39,6 +43,65 @@ export async function saveTournamentToFirestore(data) {
     console.warn("Firestore save error (using local storage fallback):", error);
     return { success: false, error: error.message };
   }
+}
+
+/**
+ * Atomic Transaction for Multi-Admin Concurrency
+ * Ensures simultaneous modifications by different admins never overwrite or intersect each other.
+ */
+export async function atomicUpdateTournamentInFirestore(patchOrUpdateFn, customSecret) {
+  try {
+    const docRef = doc(db, "tournaments", TOURNAMENT_DOC_ID);
+    const codeToSend = customSecret || '';
+
+    await runTransaction(db, async (transaction) => {
+      const sfDoc = await transaction.get(docRef);
+      let currentData = {};
+      if (sfDoc.exists()) {
+        currentData = sfDoc.data() || {};
+      }
+
+      const patch = typeof patchOrUpdateFn === 'function' ? patchOrUpdateFn(currentData) : patchOrUpdateFn;
+
+      transaction.set(docRef, {
+        ...currentData,
+        ...patch,
+        secretCode: codeToSend,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.warn("Firestore atomic transaction error:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Atomically update specific matches in Firestore
+ * Merges updated matches into the latest cloud array so other admins' changes are preserved.
+ */
+export async function atomicUpdateMatchesInFirestore(updatedMatchesList, customSecret) {
+  return atomicUpdateTournamentInFirestore((latest) => {
+    const cloudMatches = latest.matches || [];
+    const lookup = {};
+    updatedMatchesList.forEach(m => { lookup[m.id] = m; });
+
+    let mergedMatches = [];
+    if (cloudMatches.length > 0) {
+      mergedMatches = cloudMatches.map(cm => lookup[cm.id] ? { ...cm, ...lookup[cm.id] } : cm);
+      // Append any new matches not previously in cloud
+      const cloudIds = new Set(cloudMatches.map(m => m.id));
+      updatedMatchesList.forEach(m => {
+        if (!cloudIds.has(m.id)) mergedMatches.push(m);
+      });
+    } else {
+      mergedMatches = updatedMatchesList;
+    }
+
+    return { matches: mergedMatches };
+  }, customSecret);
 }
 
 /**

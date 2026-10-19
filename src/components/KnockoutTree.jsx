@@ -2,13 +2,16 @@ import React, { useState } from 'react';
 import { Trophy, Award, Medal, ZoomIn, ZoomOut, RotateCcw, ChevronLeft, ChevronRight, Layers, Sliders } from 'lucide-react';
 import ScoreModal from './ScoreModal';
 import confetti from 'canvas-confetti';
-import { propagateWinnerInTree } from '../utils/tournamentEngine';
+import { propagateWinnerInTree, syncKnockoutTreeWithGuarantees } from '../utils/tournamentEngine';
 
 export default function KnockoutTree({ 
   matches, 
   setMatches, 
   participants, 
-  onNotify 
+  groups = [],
+  config = {},
+  onNotify,
+  onAtomicMatchUpdate
 }) {
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(1);
@@ -22,7 +25,15 @@ export default function KnockoutTree({
     return map;
   }, [participants]);
 
-  const knockoutMatches = matches.filter(m => m.stage !== 'group');
+  // Synchronize matches with real-time group qualification guarantees
+  const syncedMatches = React.useMemo(() => {
+    if (groups && groups.length > 0) {
+      return syncKnockoutTreeWithGuarantees(matches, groups, participantsMap, config);
+    }
+    return matches;
+  }, [matches, groups, participantsMap, config]);
+
+  const knockoutMatches = syncedMatches.filter(m => m.stage !== 'group');
 
   // Identify distinct rounds in chronological order
   const rounds = React.useMemo(() => {
@@ -70,10 +81,14 @@ export default function KnockoutTree({
     });
   };
 
-  const handleSaveScore = (updatedMatch) => {
+  const handleSaveScore = async (updatedMatch) => {
     let newMatches = matches.map(m => m.id === updatedMatch.id ? updatedMatch : m);
     newMatches = propagateWinnerInTree(newMatches, updatedMatch);
     setMatches(newMatches);
+
+    if (onAtomicMatchUpdate) {
+      await onAtomicMatchUpdate(newMatches, `جاري رصد نتيجة المباراة #${updatedMatch.matchNumber} والمزامنة الفورية...`);
+    }
 
     if (onNotify) onNotify(`تم حفظ النتيجة وتصعيد الفائز للدور التالي!`, 'success');
 
@@ -365,7 +380,7 @@ export default function KnockoutTree({
                             {isFinished ? (
                               <span style={{ color: '#059669', fontWeight: 800 }}>منتهية ✓</span>
                             ) : (
-                              <span>{hasBothPlayers ? 'جاهزة للعب' : 'بانتظار المتأهل'}</span>
+                              <span>{hasBothPlayers ? 'جاهزة للعب' : (m.roundIndex === 0 ? 'بانتظار حسم التأهل' : 'بانتظار الفائز')}</span>
                             )}
                           </div>
 
@@ -379,17 +394,47 @@ export default function KnockoutTree({
                             borderBottom: '1px solid var(--border-light)'
                           }}>
                             <div style={{ flex: 1, overflow: 'hidden' }}>
-                              <div style={{ 
-                                fontWeight: isP1Winner ? 800 : (p1 ? 600 : 400), 
-                                fontSize: '0.85rem',
-                                color: isP1Winner ? '#065F46' : (p1 ? 'var(--text-main)' : 'var(--text-dim)'),
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis'
-                              }}>
-                                {p1 ? p1.name : '—'}
-                              </div>
-                              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{p1 ? p1.team : ''}</div>
+                              {p1 ? (
+                                <div>
+                                  <div style={{ 
+                                    fontWeight: isP1Winner ? 800 : 700, 
+                                    fontSize: '0.85rem',
+                                    color: isP1Winner ? '#065F46' : 'var(--text-main)',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                  }}>
+                                    <span>{p1.name}</span>
+                                    {m.isGuaranteed1 && (
+                                      <span className="badge badge-green" style={{ fontSize: '0.62rem', padding: '1px 5px', fontWeight: 800 }}>
+                                        تأهل مؤكد ✓
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{p1.team}</div>
+                                </div>
+                              ) : (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                                  <span style={{ 
+                                    fontSize: '0.78rem', 
+                                    fontWeight: 600, 
+                                    color: 'var(--text-muted)',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis'
+                                  }}>
+                                    {m.player1Placeholder || (m.roundIndex === 0 ? 'المرشح من المجموعة' : 'بانتظار الفائز')}
+                                  </span>
+                                  {m.roundIndex === 0 && (
+                                    <span className="badge badge-gray" style={{ fontSize: '0.6rem', padding: '1px 4px', flexShrink: 0 }}>
+                                      قيد الحسم ⏳
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
 
                             <span className="numeric" style={{ 
@@ -411,17 +456,47 @@ export default function KnockoutTree({
                             background: isP2Winner ? '#F0FDF4' : 'transparent'
                           }}>
                             <div style={{ flex: 1, overflow: 'hidden' }}>
-                              <div style={{ 
-                                fontWeight: isP2Winner ? 800 : (p2 ? 600 : 400), 
-                                fontSize: '0.85rem',
-                                color: isP2Winner ? '#065F46' : (p2 ? 'var(--text-main)' : 'var(--text-dim)'),
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis'
-                              }}>
-                                {p2 ? p2.name : '—'}
-                              </div>
-                              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{p2 ? p2.team : ''}</div>
+                              {p2 ? (
+                                <div>
+                                  <div style={{ 
+                                    fontWeight: isP2Winner ? 800 : 700, 
+                                    fontSize: '0.85rem',
+                                    color: isP2Winner ? '#065F46' : 'var(--text-main)',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                  }}>
+                                    <span>{p2.name}</span>
+                                    {m.isGuaranteed2 && (
+                                      <span className="badge badge-green" style={{ fontSize: '0.62rem', padding: '1px 5px', fontWeight: 800 }}>
+                                        تأهل مؤكد ✓
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{p2.team}</div>
+                                </div>
+                              ) : (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                                  <span style={{ 
+                                    fontSize: '0.78rem', 
+                                    fontWeight: 600, 
+                                    color: 'var(--text-muted)',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis'
+                                  }}>
+                                    {m.player2Placeholder || (m.roundIndex === 0 ? 'المرشح من المجموعة' : 'بانتظار الفائز')}
+                                  </span>
+                                  {m.roundIndex === 0 && (
+                                    <span className="badge badge-gray" style={{ fontSize: '0.6rem', padding: '1px 4px', flexShrink: 0 }}>
+                                      قيد الحسم ⏳
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
 
                             <span className="numeric" style={{ 

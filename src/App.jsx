@@ -25,8 +25,19 @@ import {
 import { 
   saveTournamentToFirestore, 
   loadTournamentFromFirestore, 
-  subscribeToTournament 
+  subscribeToTournament,
+  atomicUpdateTournamentInFirestore,
+  atomicUpdateMatchesInFirestore
 } from './firebase';
+import AdminLockScreen from './components/AdminLockScreen';
+import SyncLoadingOverlay from './components/SyncLoadingOverlay';
+import { 
+  isKsuStaffRoute, 
+  getStoredAdminKey, 
+  clearAdminKey, 
+  verifyAndDecodeKey, 
+  ADMIN_ROUTE_PATH 
+} from './utils/securityGate';
 
 const STORAGE_KEY = 'ksu_fc27_tournament_state_v1';
 
@@ -65,9 +76,16 @@ export default function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [notification, setNotification] = useState(null);
 
-  // Check if opened as dedicated public student portal (?view=tv or #/tv)
-  const isPublicUrl = window.location.search.includes('view=tv') || window.location.hash.includes('tv');
-  const [isPublicMode, setIsPublicMode] = useState(isPublicUrl);
+  // Multi-Admin Concurrency & Loading Overlay State
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState('جاري مزامنة وتحديث البيانات سحابياً...');
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+
+  // Route & Security Gate State
+  const [isAdminRoute, setIsAdminRoute] = useState(isKsuStaffRoute());
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [adminSecretCode, setAdminSecretCode] = useState(null);
+  const [isCheckingStoredKey, setIsCheckingStoredKey] = useState(true);
 
   const showNotification = (message, type = 'info') => {
     setNotification({ message, type });
@@ -76,8 +94,33 @@ export default function App() {
     }, 4000);
   };
 
-  // 1. Initial Load: Load local storage first, then subscribe to Firestore
+  // 1. Initial Load: Check stored key, load local cache, and subscribe to Firestore
   useEffect(() => {
+    // Check if key is already saved in localStorage and can decode successfully
+    const checkStoredKey = async () => {
+      try {
+        const stored = getStoredAdminKey();
+        if (stored) {
+          const result = await verifyAndDecodeKey(stored);
+          if (result.success && result.payload) {
+            setIsUnlocked(true);
+            setAdminSecretCode(result.payload.secretCode);
+          }
+        }
+      } catch (err) {
+        console.warn('Auto-unlock error:', err);
+      } finally {
+        setIsCheckingStoredKey(false);
+      }
+    };
+    checkStoredKey();
+
+    // Listen to URL navigation (back/forward or pushState)
+    const handleLocationChange = () => {
+      setIsAdminRoute(isKsuStaffRoute());
+    };
+    window.addEventListener('popstate', handleLocationChange);
+
     try {
       const cached = localStorage.getItem(STORAGE_KEY);
       if (cached) {
@@ -101,13 +144,21 @@ export default function App() {
           if (data.config) setConfig(data.config);
           setFirestoreStatus({ connected: true, error: null });
         }
+        setIsInitialLoading(false);
       },
       (err) => {
         setFirestoreStatus({ connected: false, error: err?.message || 'Firestore connection issue' });
+        setIsInitialLoading(false);
       }
     );
 
+    // Fallback timer so loading overlay doesn't hang if offline
+    const initialLoadingTimer = setTimeout(() => {
+      setIsInitialLoading(false);
+    }, 1500);
+
     return () => {
+      window.removeEventListener('popstate', handleLocationChange);
       if (typeof unsubscribe === 'function') unsubscribe();
     };
   }, []);
@@ -126,17 +177,107 @@ export default function App() {
     }
   }, [participants, groups, matches, config]);
 
-  // 3. Save to Firebase Firestore
+  // Navigation Handlers
+  const handleNavigateToAdmin = () => {
+    window.history.pushState({}, '', ADMIN_ROUTE_PATH);
+    setIsAdminRoute(true);
+  };
+
+  const handleNavigateToPublic = () => {
+    window.history.pushState({}, '', '/');
+    setIsAdminRoute(false);
+  };
+
+  const handleLockDashboard = () => {
+    clearAdminKey();
+    setIsUnlocked(false);
+    setAdminSecretCode(null);
+    showNotification('تم قفل لوحة الإدارة بنجاح 🔒', 'info');
+  };
+
+  // 3. Multi-Admin Concurrency-Safe Atomic Match Update (Prevents race conditions)
+  const handleAtomicMatchUpdate = async (updatedMatchesOrList, actionMessage = 'جاري مزامنة وحفظ التعديل سحابياً...') => {
+    setIsSyncing(true);
+    setSyncMessage(actionMessage);
+
+    try {
+      let changedList = updatedMatchesOrList;
+      if (Array.isArray(updatedMatchesOrList) && updatedMatchesOrList.length === matches.length) {
+        const diffs = updatedMatchesOrList.filter(m => {
+          const old = matches.find(om => om.id === m.id);
+          return !old || JSON.stringify(old) !== JSON.stringify(m);
+        });
+        if (diffs.length > 0) {
+          changedList = diffs;
+        }
+      }
+
+      const res = await atomicUpdateMatchesInFirestore(changedList, adminSecretCode);
+      if (res.success) {
+        setFirestoreStatus({ connected: true, error: null });
+      } else {
+        console.warn('Atomic sync warning:', res.error);
+      }
+    } catch (err) {
+      console.error('Atomic match update exception:', err);
+    } finally {
+      setTimeout(() => {
+        setIsSyncing(false);
+      }, 400);
+    }
+  };
+
+  const handleAtomicTournamentUpdate = async (patchOrFn, actionMessage = 'جاري مزامنة وتأمين حفظ البيانات...') => {
+    setIsSyncing(true);
+    setSyncMessage(actionMessage);
+    try {
+      const res = await atomicUpdateTournamentInFirestore(patchOrFn, adminSecretCode);
+      if (res.success) {
+        setFirestoreStatus({ connected: true, error: null });
+      }
+    } catch (err) {
+      console.error('Atomic tournament update error:', err);
+    } finally {
+      setTimeout(() => {
+        setIsSyncing(false);
+      }, 400);
+    }
+  };
+
+  const handleRefreshData = async () => {
+    setIsSyncing(true);
+    setSyncMessage('جاري تنزيل أحدث بيانات البطولة من السحابة...');
+    try {
+      const data = await loadTournamentFromFirestore();
+      if (data) {
+        if (data.participants) setParticipants(data.participants);
+        if (data.groups) setGroups(data.groups);
+        if (data.matches) setMatches(data.matches);
+        if (data.config) setConfig(data.config);
+        setFirestoreStatus({ connected: true, error: null });
+        showNotification('تم تحديث وتحميل أحدث البيانات من السحابة بنجاح! ⚡', 'success');
+      }
+    } catch (e) {
+      console.warn('Refresh error:', e);
+    } finally {
+      setTimeout(() => setIsSyncing(false), 500);
+    }
+  };
+
+  // 4. Save to Firebase Firestore
   const handleSaveToCloud = async () => {
     setIsSaving(true);
+    setIsSyncing(true);
+    setSyncMessage('جاري مزامنة وحفظ جميع بيانات البطولة في Google Firestore...');
     const result = await saveTournamentToFirestore({
       name: 'كأس السكن: FC27',
       participants,
       groups,
       matches,
       config
-    });
+    }, adminSecretCode);
     setIsSaving(false);
+    setTimeout(() => setIsSyncing(false), 450);
 
     if (result.success) {
       setFirestoreStatus({ connected: true, error: null });
@@ -183,8 +324,8 @@ export default function App() {
 
   const completedMatchesCount = matches.filter(m => m.status === 'completed' || m.status === 'walkover').length;
 
-  // 6. IF PUBLIC MODE: Render dedicated student spectator portal
-  if (isPublicMode) {
+  // 6. IF NOT ON ADMIN ROUTE (/KSUHTSTAFF): Render dedicated student spectator portal
+  if (!isAdminRoute) {
     return (
       <div className="app-layout" style={{ background: '#F8FAFC' }}>
         {/* Public Top Bar */}
@@ -203,12 +344,10 @@ export default function App() {
 
           <button 
             className="btn btn-secondary btn-sm"
-            onClick={() => {
-              window.history.pushState({}, '', window.location.pathname);
-              setIsPublicMode(false);
-            }}
+            onClick={handleNavigateToAdmin}
+            style={{ fontWeight: 700 }}
           >
-            لوحة الإدارة والتحكم
+            لوحة الإدارة والتحكم (/KSUHTSTAFF)
           </button>
         </header>
 
@@ -220,13 +359,57 @@ export default function App() {
             config={config}
             isPublicMode={true}
             onNotify={showNotification}
+            onRefreshData={handleRefreshData}
+            isLoading={isSyncing || (isInitialLoading && matches.length === 0)}
           />
         </main>
+
+        {/* Public Circular Loading Overlay with Competition Logo */}
+        <SyncLoadingOverlay 
+          show={isSyncing || (isInitialLoading && matches.length === 0)}
+          message={isInitialLoading && matches.length === 0 ? "جاري تنزيل وتحميل بيانات البث المباشر..." : syncMessage}
+          subtext="بث حي ومباشر — كأس السكن FC27 | جامعة الملك سعود"
+        />
       </div>
     );
   }
 
-  // ADMIN MODE
+  // 7. ADMIN ROUTE (/KSUHTSTAFF): If still checking stored key, show loading splash
+  if (isCheckingStoredKey) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#0F172A',
+        color: '#FFFFFF'
+      }}>
+        <img src="/logo.png" alt="شعار البطولة" style={{ height: '72px', marginBottom: '16px' }} />
+        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#38BDF8', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span className="spinner" style={{ width: '16px', height: '16px', border: '2px solid #38BDF8', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+          <span>جاري التحقق من مفتاح فك التشفير...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // 8. ADMIN ROUTE (/KSUHTSTAFF): If not yet unlocked with correct key, render Locked Screen with single password box & logo
+  if (!isUnlocked) {
+    return (
+      <AdminLockScreen
+        onUnlockSuccess={(payload, key) => {
+          setIsUnlocked(true);
+          setAdminSecretCode(payload.secretCode);
+          showNotification('تم فك تشفير لوحة الإدارة والتحقق بنجاح! 🔓', 'success');
+        }}
+        onGoToPublic={handleNavigateToPublic}
+      />
+    );
+  }
+
+  // 9. ADMIN MODE (Unlocked & Decoded)
   return (
     <div className="app-layout">
       {/* Toast Notification */}
@@ -252,7 +435,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Header with Logo & Backup / Live Sync */}
+      {/* Main Header with Logo, Backup, Live Sync, Public Switch & Lock Button */}
       <Header
         participantsCount={participants.length}
         groupsCount={groups.length}
@@ -263,6 +446,8 @@ export default function App() {
         isSaving={isSaving}
         onExportBackup={handleExportBackup}
         onImportBackup={handleImportBackup}
+        onViewPublic={handleNavigateToPublic}
+        onLockDashboard={handleLockDashboard}
       />
 
       {/* Modern Navigation Tabs */}
@@ -361,9 +546,11 @@ export default function App() {
             matches={matches}
             setMatches={setMatches}
             participants={participants}
+            groups={groups}
             config={config}
             setConfig={setConfig}
             onNotify={showNotification}
+            onAtomicMatchUpdate={handleAtomicMatchUpdate}
           />
         )}
 
@@ -387,6 +574,7 @@ export default function App() {
             participants={participants}
             config={config}
             onNotify={showNotification}
+            onAtomicMatchUpdate={handleAtomicMatchUpdate}
           />
         )}
 
@@ -398,6 +586,8 @@ export default function App() {
             config={config}
             isPublicMode={false}
             onNotify={showNotification}
+            onRefreshData={handleRefreshData}
+            isLoading={isSyncing}
           />
         )}
 
@@ -417,6 +607,13 @@ export default function App() {
           />
         )}
       </main>
+
+      {/* Centered Circular Loading Overlay with Blurred Background & Competition Logo */}
+      <SyncLoadingOverlay 
+        show={isSyncing}
+        message={syncMessage}
+        subtext="حماية فورية لمنع تداخل وتعارض تعديلات المشرفين"
+      />
     </div>
   );
 }

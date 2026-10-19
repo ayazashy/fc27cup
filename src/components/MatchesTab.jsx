@@ -16,20 +16,25 @@ import {
   CalendarDays, 
   Sliders, 
   Sparkles,
-  CheckCheck
+  CheckCheck,
+  MessageCircle
 } from 'lucide-react';
 import ScoreModal from './ScoreModal';
-import { getConsoleStatusMap, rebalanceRemainingMatches } from '../utils/tournamentEngine';
+import WhatsAppReminderModal from './WhatsAppReminderModal';
+import { getConsoleStatusMap, rebalanceRemainingMatches, syncKnockoutTreeWithGuarantees } from '../utils/tournamentEngine';
 
 export default function MatchesTab({ 
   matches, 
   setMatches, 
   participants, 
+  groups = [],
   config,
   setConfig,
-  onNotify
+  onNotify,
+  onAtomicMatchUpdate
 }) {
   const [selectedMatch, setSelectedMatch] = useState(null);
+  const [reminderMatch, setReminderMatch] = useState(null);
   const [viewMode, setViewMode] = useState('consoles'); // 'consoles' (Queues) or 'list'
   const [stageFilter, setStageFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -142,25 +147,38 @@ export default function MatchesTab({
     return ids;
   }, [consoleStatusMap]);
 
-  const handleStartMatch = (match) => {
-    setMatches(prev => prev.map(m => m.id === match.id ? { ...m, status: 'live', startedAt: new Date().toISOString() } : m));
+  const handleStartMatch = async (match) => {
+    const updated = matches.map(m => m.id === match.id ? { ...m, status: 'live', startedAt: new Date().toISOString() } : m);
+    setMatches(updated);
+    if (onAtomicMatchUpdate) {
+      await onAtomicMatchUpdate(updated, `جاري بدء المباراة #${match.matchNumber} ومزامنة أجهزة الصالة...`);
+    }
     onNotify(`تم بدء المباراة #${match.matchNumber} على جهاز ${match.consoleId}`, 'info');
     resetTimer();
     setIsTimerRunning(true);
   };
 
-  const handleSaveScore = (updatedMatch) => {
-    const updated = matches.map(m => m.id === updatedMatch.id ? updatedMatch : m);
+  const handleSaveScore = async (updatedMatch) => {
+    let updated = matches.map(m => m.id === updatedMatch.id ? updatedMatch : m);
     // Dynamically balance queued matches ONLY within that match's day to keep days strictly partitioned
     const matchDay = updatedMatch.dayNumber || 1;
-    const rebalanced = rebalanceRemainingMatches(updated, consolesCount, matchDay);
-    setMatches(rebalanced);
+    updated = rebalanceRemainingMatches(updated, consolesCount, matchDay);
+    if (groups && groups.length > 0) {
+      updated = syncKnockoutTreeWithGuarantees(updated, groups, participantsMap, config);
+    }
+    setMatches(updated);
+    if (onAtomicMatchUpdate) {
+      await onAtomicMatchUpdate(updated, `جاري اعتماد نتيجة المباراة #${updatedMatch.matchNumber} والمزامنة الفورية...`);
+    }
     onNotify(`تم اعتماد نتيجة المباراة #${updatedMatch.matchNumber}! تم تلقائياً موازنة طوابير اليوم ${matchDay} وتحديث المواعيد التقديرية`, 'success');
   };
 
-  const handleManualRebalance = () => {
+  const handleManualRebalance = async () => {
     const rebalanced = rebalanceRemainingMatches(matches, consolesCount, viewConsoleDay);
     setMatches(rebalanced);
+    if (onAtomicMatchUpdate) {
+      await onAtomicMatchUpdate(rebalanced, `جاري إعادة موازنة طوابير اليوم ${viewConsoleDay} بالتساوي...`);
+    }
     onNotify(`تمت إعادة موازنة طوابير اليوم ${viewConsoleDay} بالتساوي على جميع أجهزة الصالة!`, 'success');
   };
 
@@ -616,6 +634,15 @@ export default function MatchesTab({
                               </button>
                             )}
                             <button 
+                              className="btn btn-secondary btn-sm"
+                              style={{ borderColor: '#25D366', color: '#047857', display: 'flex', alignItems: 'center', gap: '4px' }}
+                              onClick={() => setReminderMatch(current)}
+                              title="إرسال تذكير واتساب مباشر للاعبين"
+                            >
+                              <MessageCircle size={14} color="#25D366" />
+                              <span>تذكير</span>
+                            </button>
+                            <button 
                               className="btn btn-primary btn-sm" 
                               style={{ flex: 1.2, fontWeight: 700 }}
                               onClick={() => setSelectedMatch(current)}
@@ -661,6 +688,44 @@ export default function MatchesTab({
                           <span>الوقت التقديري لبدء المباراة: {next.estimatedTime.rangeStr}</span>
                         </div>
                       )}
+
+                      {/* Direct WhatsApp Reminder Action for Next Match */}
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between', 
+                        marginTop: '8px', 
+                        paddingTop: '6px', 
+                        borderTop: '1px dashed rgba(202, 138, 4, 0.4)' 
+                      }}>
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          style={{
+                            background: '#25D366',
+                            color: '#FFFFFF',
+                            border: 'none',
+                            padding: '4px 10px',
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 4px rgba(37, 211, 102, 0.3)'
+                          }}
+                          onClick={() => setReminderMatch(next)}
+                          title="إرسال تذكير مباشر بالواتساب للاعبين التاليين"
+                        >
+                          <MessageCircle size={13} />
+                          <span>تذكير اللاعبين عبر واتساب 📲</span>
+                        </button>
+
+                        <span style={{ fontSize: '0.68rem', color: '#854D0E', fontWeight: 600 }}>
+                          {nextP1?.name?.split(' ')[0]} & {nextP2?.name?.split(' ')[0]}
+                        </span>
+                      </div>
                     </div>
                   )}
 
@@ -728,6 +793,33 @@ export default function MatchesTab({
                             </div>
 
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                              {/* Quick WhatsApp Reminder Button */}
+                              {!isDone && (
+                                <button
+                                  type="button"
+                                  style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    padding: '3px 5px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    color: '#25D366',
+                                    borderRadius: '4px',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.background = '#DCFCE7'}
+                                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setReminderMatch(m);
+                                  }}
+                                  title="إرسال تذكير واتساب للمباراة بالموعد التقديري"
+                                >
+                                  <MessageCircle size={15} />
+                                </button>
+                              )}
+
                               {isViewDayActive && m.estimatedTime && !isDone && !isCur && (
                                 <span 
                                   className="numeric"
@@ -899,7 +991,18 @@ export default function MatchesTab({
                     </div>
                   </div>
 
-                  <div className="match-footer" style={{ justifyContent: 'flex-end' }}>
+                  <div className="match-footer" style={{ justifyContent: 'space-between' }}>
+                    <button 
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ borderColor: '#25D366', color: '#065F46', display: 'flex', alignItems: 'center', gap: '5px' }}
+                      onClick={() => setReminderMatch(match)}
+                      title="إرسال تذكير واتساب لموعد المباراة"
+                    >
+                      <MessageCircle size={14} color="#25D366" />
+                      <span>تذكير واتساب</span>
+                    </button>
+
                     <button className="btn btn-primary btn-sm" onClick={() => setSelectedMatch(match)}>
                       {isCompleted ? 'تعديل النتيجة' : 'رصد النتيجة'}
                     </button>
@@ -909,6 +1012,17 @@ export default function MatchesTab({
             })}
           </div>
         </div>
+      )}
+
+      {/* WhatsApp Match Reminder Modal */}
+      {reminderMatch && (
+        <WhatsAppReminderModal
+          match={reminderMatch}
+          p1={participantsMap[reminderMatch.player1Id]}
+          p2={participantsMap[reminderMatch.player2Id]}
+          onClose={() => setReminderMatch(null)}
+          onNotify={onNotify}
+        />
       )}
 
       {/* Score Modal */}

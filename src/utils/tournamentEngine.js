@@ -523,44 +523,159 @@ export function calculateGroupStandings(group, allMatches, participantsMap, conf
 }
 
 /**
+ * Check qualification guarantee status for a group
+ * Qualification is guaranteed ONLY if:
+ * 1. All matches in the group are finished (100% final standings), OR
+ * 2. Mathematical threshold is reached where no remaining match results
+ *    can cause the candidate to drop below the qualifying rank.
+ */
+export function checkGroupQualificationStatus(group, allMatches, participantsMap, config) {
+  const qualifiersPerGroup = Number(config.qualifiersPerGroup) || 2;
+  const pointsWin = Number(config.pointsWin ?? 3);
+  const groupMatches = allMatches.filter(m => m.groupId === group.id);
+  const standings = calculateGroupStandings(group, allMatches, participantsMap, config);
+
+  const isGroupFinished = groupMatches.length > 0 && groupMatches.every(
+    m => m.status === 'completed' || m.status === 'walkover'
+  );
+
+  // Calculate maximum potential points each participant can possibly reach
+  const playerMaxPoints = {};
+  standings.forEach(p => {
+    const remMatches = groupMatches.filter(
+      m => (m.player1Id === p.playerId || m.player2Id === p.playerId) &&
+           m.status !== 'completed' && m.status !== 'walkover'
+    ).length;
+    playerMaxPoints[p.playerId] = p.points + (remMatches * pointsWin);
+  });
+
+  const rankResults = [];
+  for (let r = 1; r <= qualifiersPerGroup; r++) {
+    const idx = r - 1;
+    let isGuaranteed = false;
+    let guaranteedPlayerId = null;
+
+    if (standings.length > idx) {
+      if (isGroupFinished) {
+        // Group completely finished -> 100% final standings
+        isGuaranteed = true;
+        guaranteedPlayerId = standings[idx].playerId;
+      } else {
+        // In-progress mathematical qualification guarantee:
+        if (r === 1) {
+          const cand = standings[0];
+          // Candidate must have played matches and earned points
+          if (cand.played > 0) {
+            const othersMax = standings.slice(1).map(o => playerMaxPoints[o.playerId] ?? 0);
+            const highestOtherMax = Math.max(...othersMax, -1);
+            if (cand.points > highestOtherMax) {
+              isGuaranteed = true;
+              guaranteedPlayerId = cand.playerId;
+            }
+          }
+        } else if (r === 2 && qualifiersPerGroup >= 2) {
+          const cand1 = standings[0];
+          const cand2 = standings[1];
+          if (cand2.played > 0) {
+            const rank1OthersMax = Math.max(...standings.slice(1).map(o => playerMaxPoints[o.playerId] ?? 0), -1);
+            const isRank1Locked = cand1.points > rank1OthersMax;
+
+            const belowCand2Max = Math.max(...standings.slice(2).map(o => playerMaxPoints[o.playerId] ?? 0), -1);
+            if (isRank1Locked && cand2.points > belowCand2Max) {
+              isGuaranteed = true;
+              guaranteedPlayerId = cand2.playerId;
+            }
+          }
+        }
+      }
+    }
+
+    const placeholder = qualifiersPerGroup === 1 
+      ? `المرشح من ${group.name}`
+      : (r === 1 ? `متصدر ${group.name}` : `وصيف ${group.name}`);
+
+    const shortPlaceholder = qualifiersPerGroup === 1
+      ? `مرشح ${group.shortName || group.name}`
+      : (r === 1 ? `متصدر ${group.shortName || group.name}` : `وصيف ${group.shortName || group.name}`);
+
+    rankResults.push({
+      groupId: group.id,
+      groupName: group.name,
+      shortName: group.shortName || group.name,
+      rank: r,
+      placeholder,
+      shortPlaceholder,
+      isGuaranteed,
+      playerId: isGuaranteed ? guaranteedPlayerId : null,
+      player: isGuaranteed && guaranteedPlayerId ? participantsMap[guaranteedPlayerId] : null
+    });
+  }
+
+  return rankResults;
+}
+
+/**
  * Generate Fully Connected Hierarchical Knockout Bracket Tree
  * Dynamically adjusts to ANY number of qualifiers (4, 8, 16, 32, 64)
+ * DOES NOT display participant names until qualification is mathematically guaranteed!
  */
 export function generateKnockoutTree(groups, allMatches, participantsMap, config) {
   const qualifiersPerGroup = Number(config.qualifiersPerGroup) || 2;
-  const qualifiers = [];
+  
+  if (!groups || groups.length === 0) {
+    return { bracketMatches: [], roundsConfig: [] };
+  }
 
-  groups.forEach((grp, idx) => {
-    const standings = calculateGroupStandings(grp, allMatches, participantsMap, config);
-    for (let q = 0; q < qualifiersPerGroup && q < standings.length; q++) {
-      qualifiers.push({
-        groupId: grp.id,
-        groupName: grp.name,
-        rank: q + 1,
-        playerId: standings[q].playerId,
-        player: participantsMap[standings[q].playerId]
-      });
-    }
+  // Collect qualification slots per group with guarantee checks
+  const allSlots = [];
+  groups.forEach(grp => {
+    const slots = checkGroupQualificationStatus(grp, allMatches, participantsMap, config);
+    allSlots.push(...slots);
   });
 
-  if (qualifiers.length < 2) {
+  const expectedQualifiers = groups.length * qualifiersPerGroup;
+  if (expectedQualifiers < 2) {
     return { bracketMatches: [], roundsConfig: [] };
   }
 
   let bracketSize = 2;
-  while (bracketSize < qualifiers.length) {
+  while (bracketSize < expectedQualifiers) {
     bracketSize *= 2;
   }
   bracketSize = Math.min(bracketSize, 64);
 
-  const firsts = qualifiers.filter(q => q.rank === 1);
-  const seconds = qualifiers.filter(q => q.rank === 2);
+  const numMatchesInR1 = bracketSize / 2;
   const round1Pairings = [];
 
-  for (let i = 0; i < bracketSize / 2; i++) {
-    const p1 = firsts[i] ? firsts[i].playerId : (qualifiers[i * 2] ? qualifiers[i * 2].playerId : null);
-    const p2 = seconds[i] ? seconds[i].playerId : (qualifiers[i * 2 + 1] ? qualifiers[i * 2 + 1].playerId : null);
-    round1Pairings.push({ p1, p2 });
+  if (qualifiersPerGroup === 1) {
+    // 1 qualifier per group: e.g. Rank 1 of G1 vs Rank 1 of G2
+    const rank1Slots = allSlots.filter(s => s.rank === 1);
+    for (let m = 0; m < numMatchesInR1; m++) {
+      const slot1 = rank1Slots[m * 2] || null;
+      const slot2 = rank1Slots[m * 2 + 1] || null;
+      round1Pairings.push({ slot1, slot2 });
+    }
+  } else {
+    // 2 qualifiers per group: 1st of Group i vs 2nd of Group j (from different groups)
+    const firsts = allSlots.filter(s => s.rank === 1);
+    const seconds = allSlots.filter(s => s.rank === 2);
+    const gCount = groups.length;
+    const shift = Math.max(1, Math.floor(gCount / 2));
+
+    for (let m = 0; m < numMatchesInR1; m++) {
+      let slot1 = null;
+      let slot2 = null;
+
+      if (m < gCount) {
+        slot1 = firsts[m] || null;
+        const targetSecondIdx = (m + shift) % gCount;
+        slot2 = seconds[targetSecondIdx] || null;
+      } else {
+        slot1 = firsts[m % gCount] || null;
+        slot2 = seconds[(m + shift) % gCount] || null;
+      }
+      round1Pairings.push({ slot1, slot2 });
+    }
   }
 
   const roundDefs = [
@@ -575,7 +690,6 @@ export function generateKnockoutTree(groups, allMatches, participantsMap, config
   const activeRounds = roundDefs.filter(r => r.size <= bracketSize);
   const bracketMatches = [];
   let matchNumberCounter = 200;
-
   let previousRoundMatches = [];
 
   activeRounds.forEach((rDef, rIdx) => {
@@ -584,13 +698,33 @@ export function generateKnockoutTree(groups, allMatches, participantsMap, config
 
     for (let m = 0; m < numMatchesInRound; m++) {
       const matchId = `ko_${rDef.key}_${m + 1}`;
-      let p1 = null;
-      let p2 = null;
+      let p1Id = null;
+      let p2Id = null;
+      let p1Placeholder = rIdx === 0 ? 'بانتظار المتأهل' : 'بانتظار الفائز';
+      let p2Placeholder = rIdx === 0 ? 'بانتظار المتأهل' : 'بانتظار الفائز';
+      let isG1 = false;
+      let isG2 = false;
+      let g1Id = null;
+      let g2Id = null;
+      let r1 = null;
+      let r2 = null;
 
       if (rIdx === 0) {
-        const pair = round1Pairings[m] || { p1: null, p2: null };
-        p1 = pair.p1;
-        p2 = pair.p2;
+        const pair = round1Pairings[m] || { slot1: null, slot2: null };
+        if (pair.slot1) {
+          p1Id = pair.slot1.playerId; // null if not guaranteed!
+          p1Placeholder = pair.slot1.placeholder;
+          isG1 = pair.slot1.isGuaranteed;
+          g1Id = pair.slot1.groupId;
+          r1 = pair.slot1.rank;
+        }
+        if (pair.slot2) {
+          p2Id = pair.slot2.playerId; // null if not guaranteed!
+          p2Placeholder = pair.slot2.placeholder;
+          isG2 = pair.slot2.isGuaranteed;
+          g2Id = pair.slot2.groupId;
+          r2 = pair.slot2.rank;
+        }
       }
 
       const matchObj = {
@@ -600,8 +734,16 @@ export function generateKnockoutTree(groups, allMatches, participantsMap, config
         roundIndex: rIdx,
         matchIndexInRound: m,
         title: `${rDef.title} - مباراة ${m + 1}`,
-        player1Id: p1,
-        player2Id: p2,
+        player1Id: p1Id,
+        player2Id: p2Id,
+        player1Placeholder: p1Placeholder,
+        player2Placeholder: p2Placeholder,
+        isGuaranteed1: isG1,
+        isGuaranteed2: isG2,
+        group1Id: g1Id,
+        group2Id: g2Id,
+        rank1: r1,
+        rank2: r2,
         score1: null,
         score2: null,
         penalty1: null,
@@ -627,6 +769,11 @@ export function generateKnockoutTree(groups, allMatches, participantsMap, config
         if (parentMatch) {
           prevMatch.nextMatchId = parentMatch.id;
           prevMatch.nextMatchSlot = targetSlot;
+          if (targetSlot === 1) {
+            parentMatch.player1Placeholder = `الفائز من مباراة #${prevMatch.matchNumber}`;
+          } else {
+            parentMatch.player2Placeholder = `الفائز من مباراة #${prevMatch.matchNumber}`;
+          }
         }
       });
     }
@@ -635,6 +782,71 @@ export function generateKnockoutTree(groups, allMatches, participantsMap, config
   });
 
   return { bracketMatches, roundsConfig: activeRounds };
+}
+
+/**
+ * Synchronize Existing Knockout Matches with Dynamic Group Qualification Guarantees
+ */
+export function syncKnockoutTreeWithGuarantees(matches, groups, participantsMap, config) {
+  if (!groups || groups.length === 0) return matches;
+  const hasKnockout = matches.some(m => m.stage !== 'group');
+  if (!hasKnockout) return matches;
+
+  const groupStatusMap = {};
+  groups.forEach(grp => {
+    groupStatusMap[grp.id] = checkGroupQualificationStatus(grp, matches, participantsMap, config);
+  });
+
+  return matches.map(m => {
+    if (m.stage === 'group' || m.roundIndex !== 0) return m;
+
+    let updatedP1 = m.player1Id;
+    let updatedP2 = m.player2Id;
+    let isG1 = m.isGuaranteed1;
+    let isG2 = m.isGuaranteed2;
+    let p1Placeholder = m.player1Placeholder;
+    let p2Placeholder = m.player2Placeholder;
+
+    if (m.group1Id) {
+      const gSlots = groupStatusMap[m.group1Id] || [];
+      const slot1 = gSlots.find(s => s.rank === (m.rank1 || 1));
+      if (slot1) {
+        p1Placeholder = slot1.placeholder;
+        if (slot1.isGuaranteed) {
+          updatedP1 = slot1.playerId;
+          isG1 = true;
+        } else {
+          updatedP1 = null;
+          isG1 = false;
+        }
+      }
+    }
+
+    if (m.group2Id) {
+      const gSlots = groupStatusMap[m.group2Id] || [];
+      const slot2 = gSlots.find(s => s.rank === (m.rank2 || 2));
+      if (slot2) {
+        p2Placeholder = slot2.placeholder;
+        if (slot2.isGuaranteed) {
+          updatedP2 = slot2.playerId;
+          isG2 = true;
+        } else {
+          updatedP2 = null;
+          isG2 = false;
+        }
+      }
+    }
+
+    return {
+      ...m,
+      player1Id: updatedP1,
+      player2Id: updatedP2,
+      player1Placeholder: p1Placeholder,
+      player2Placeholder: p2Placeholder,
+      isGuaranteed1: isG1,
+      isGuaranteed2: isG2
+    };
+  });
 }
 
 /**

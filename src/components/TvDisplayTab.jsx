@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Tv, Monitor, Maximize2, Minimize2, Trophy, Clock, Volume2, Award, Search, Share2, Check, Bell, Play, Pause, ExternalLink } from 'lucide-react';
+import { Tv, Monitor, Maximize2, Minimize2, Trophy, Clock, Volume2, Award, Search, Share2, Check, Bell, Play, Pause, ExternalLink, RefreshCw } from 'lucide-react';
 import { calculateGroupStandings, getConsoleStatusMap } from '../utils/tournamentEngine';
 import KnockoutTree from './KnockoutTree';
+import SyncLoadingOverlay from './SyncLoadingOverlay';
 
 export default function TvDisplayTab({ 
   matches, 
@@ -9,7 +10,9 @@ export default function TvDisplayTab({
   participants, 
   config,
   isPublicMode = false,
-  onNotify
+  onNotify,
+  onRefreshData,
+  isLoading = false
 }) {
   const [activeTab, setActiveTab] = useState('consoles'); // 'consoles', 'standings', 'tree', 'scorers'
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -19,6 +22,20 @@ export default function TvDisplayTab({
   const [announcement, setAnnouncement] = useState('أهلاً بكم في بطولة كأس السكن FC27 — يرجى من اللاعبين الحضور قبل موعد المباراة بـ 5 دقائق');
   const [isEditingNotice, setIsEditingNotice] = useState(false);
   const [tempNotice, setTempNotice] = useState(announcement);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      if (onRefreshData) {
+        await onRefreshData();
+      }
+    } catch (e) {
+      console.warn('Manual refresh failed:', e);
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 600);
+    }
+  };
 
   const participantsMap = React.useMemo(() => {
     const map = {};
@@ -204,6 +221,22 @@ export default function TvDisplayTab({
             >
               {copiedLink ? <Check size={15} color="#10B981" /> : <Share2 size={15} />}
               <span>{copiedLink ? 'تم نسخ الرابط!' : 'رابط المتابعة للطلاب'}</span>
+            </button>
+
+            {/* Refresh Live Feed Button */}
+            <button 
+              className="btn btn-secondary btn-sm"
+              onClick={handleManualRefresh}
+              disabled={isLoading || isRefreshing}
+              title="تحديث البث وجلب أحدث النتائج فورياً من السحابة"
+            >
+              <RefreshCw 
+                size={15} 
+                style={{ 
+                  animation: (isLoading || isRefreshing) ? 'spinOverlayRing 0.8s linear infinite' : 'none' 
+                }} 
+              />
+              <span>تحديث البث</span>
             </button>
 
             {/* Auto-rotate Toggle for Projector */}
@@ -558,6 +591,8 @@ export default function TvDisplayTab({
           matches={matches}
           setMatches={() => {}} // Read-only for spectator portal
           participants={participants}
+          groups={groups}
+          config={config}
           onNotify={onNotify}
         />
       )}
@@ -638,6 +673,13 @@ export default function TvDisplayTab({
           </button>
         )}
       </div>
+
+      {/* Circular Loading Overlay with Blurred Background & Competition Logo */}
+      <SyncLoadingOverlay 
+        show={isLoading || isRefreshing}
+        message="جاري تحديث وتحميل بيانات البث المباشر..."
+        subtext="جلب أحدث نتائج الصالة وتحديثات الأجهزة والشجرة فورياً"
+      />
     </div>
   );
 }

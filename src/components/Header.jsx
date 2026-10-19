@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trophy, Users, CheckCircle, Cloud, Download, Upload, Wifi, BarChart3 } from 'lucide-react';
+import { Trophy, Users, CheckCircle, Cloud, Download, Upload, Wifi, BarChart3, Tv, Lock } from 'lucide-react';
 
 export default function Header({ 
   participantsCount, 
@@ -10,7 +10,9 @@ export default function Header({
   onSaveToCloud,
   isSaving,
   onExportBackup,
-  onImportBackup
+  onImportBackup,
+  onViewPublic,
+  onLockDashboard
 }) {
   const fileInputRef = React.useRef(null);
 
@@ -117,6 +119,31 @@ export default function Header({
             <Cloud size={16} />
             {isSaving ? 'جاري المزامنة...' : 'مزامنة السحابة'}
           </button>
+
+          {/* View Public Portal */}
+          {onViewPublic && (
+            <button 
+              className="btn btn-secondary btn-sm"
+              onClick={onViewPublic}
+              title="الانتقال إلى بوابة العرض العامة للمشاهدين"
+            >
+              <Tv size={15} color="var(--ksu-green)" />
+              البوابة العامة
+            </button>
+          )}
+
+          {/* Lock Dashboard */}
+          {onLockDashboard && (
+            <button 
+              className="btn btn-secondary btn-sm"
+              onClick={onLockDashboard}
+              style={{ borderColor: '#FCA5A5', color: '#991B1B' }}
+              title="قفل لوحة الإدارة والخروج"
+            >
+              <Lock size={15} color="#DC2626" />
+              قفل الإدارة
+            </button>
+          )}
         </div>
       </div>
     </header>
