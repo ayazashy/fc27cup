@@ -1,5 +1,6 @@
 import React from 'react';
 import { Trophy, Users, CheckCircle, Cloud, Download, Upload, Wifi, BarChart3, Tv, Lock } from 'lucide-react';
+import logoUrl from '../utils/logo';
 
 export default function Header({ 
   participantsCount, 
@@ -38,7 +39,7 @@ export default function Header({
         {/* Brand Section with Official Tournament Logo */}
         <div className="brand-section">
           <img 
-            src="/logo.png" 
+            src={logoUrl} 
             alt="شعار بطولة كأس السكن FC27" 
             className="brand-logo" 
             onError={(e) => {

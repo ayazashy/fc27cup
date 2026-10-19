@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, Unlock, Eye, EyeOff, ShieldCheck, AlertCircle, ArrowLeft, KeyRound } from 'lucide-react';
 import { verifyAndDecodeKey, storeAdminKey } from '../utils/securityGate';
+import logoUrl from '../utils/logo';
 
 export default function AdminLockScreen({
   onUnlockSuccess,
@@ -86,7 +87,7 @@ export default function AdminLockScreen({
         {/* Competition Logo */}
         <div style={{ marginBottom: '18px' }}>
           <img 
-            src="/logo.png" 
+            src={logoUrl} 
             alt="شعار كأس السكن FC27" 
             style={{ 
               height: '84px', 

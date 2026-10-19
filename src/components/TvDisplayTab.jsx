@@ -3,6 +3,7 @@ import { Tv, Monitor, Maximize2, Minimize2, Trophy, Clock, Volume2, Award, Searc
 import { calculateGroupStandings, getConsoleStatusMap } from '../utils/tournamentEngine';
 import KnockoutTree from './KnockoutTree';
 import SyncLoadingOverlay from './SyncLoadingOverlay';
+import logoUrl from '../utils/logo';
 
 export default function TvDisplayTab({ 
   matches, 
@@ -166,7 +167,7 @@ export default function TvDisplayTab({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <img 
-              src="/logo.png" 
+              src={logoUrl} 
               alt="شعار كأس السكن FC27" 
               style={{ height: '48px', width: 'auto', objectFit: 'contain' }}
             />

@@ -31,6 +31,7 @@ import {
 } from './firebase';
 import AdminLockScreen from './components/AdminLockScreen';
 import SyncLoadingOverlay from './components/SyncLoadingOverlay';
+import logoUrl from './utils/logo';
 import { 
   isKsuStaffRoute, 
   getStoredAdminKey, 
@@ -331,7 +332,7 @@ export default function App() {
         {/* Public Top Bar */}
         <header style={{ background: '#FFFFFF', borderBottom: '1px solid var(--border-light)', padding: '12px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <img src="/logo.png" alt="شعار كأس السكن FC27" style={{ height: '42px', width: 'auto', objectFit: 'contain' }} />
+            <img src={logoUrl} alt="شعار كأس السكن FC27" style={{ height: '42px', width: 'auto', objectFit: 'contain' }} />
             <div>
               <h1 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--ksu-green)' }}>
                 بوابة متابعة مباريات كأس السكن FC27 — سكن طلاب KSU
@@ -386,7 +387,7 @@ export default function App() {
         background: '#0F172A',
         color: '#FFFFFF'
       }}>
-        <img src="/logo.png" alt="شعار البطولة" style={{ height: '72px', marginBottom: '16px' }} />
+        <img src={logoUrl} alt="شعار البطولة" style={{ height: '72px', marginBottom: '16px' }} />
         <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#38BDF8', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span className="spinner" style={{ width: '16px', height: '16px', border: '2px solid #38BDF8', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
           <span>جاري التحقق من مفتاح فك التشفير...</span>

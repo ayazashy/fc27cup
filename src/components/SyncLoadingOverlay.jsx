@@ -1,4 +1,5 @@
 import React from 'react';
+import logoUrl from '../utils/logo';
 
 export default function SyncLoadingOverlay({
   show,
@@ -74,7 +75,7 @@ export default function SyncLoadingOverlay({
             padding: '8px'
           }}>
             <img 
-              src="/logo.png" 
+              src={logoUrl} 
               alt="شعار كأس السكن FC27" 
               style={{
                 width: '100%',
