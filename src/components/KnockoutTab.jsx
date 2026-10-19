@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Trophy, GitMerge, Award, CheckCircle, Shield } from 'lucide-react';
+import { Trophy, GitMerge, Award, CheckCircle, Shield, Medal } from 'lucide-react';
 import { generateKnockoutBracket } from '../utils/tournamentEngine';
 import ScoreModal from './ScoreModal';
 import confetti from 'canvas-confetti';
@@ -40,7 +40,6 @@ export default function KnockoutTab({
       return;
     }
 
-    // Keep group matches, replace knockout matches
     const nonKnockout = matches.filter(m => m.stage === 'group');
     setMatches([...nonKnockout, ...bracketMatches]);
     onNotify(`تم بنجاح تصعيد المتأهلين وبناء شجرة خروج المغلوب (${bracketMatches.length} مباراة)!`, 'success');
@@ -54,8 +53,8 @@ export default function KnockoutTab({
     if (updatedMatch.stage === 'final' && updatedMatch.winnerId) {
       try {
         confetti({
-          particleCount: 150,
-          spread: 100,
+          particleCount: 200,
+          spread: 120,
           origin: { y: 0.5 }
         });
       } catch (e) {}
@@ -70,6 +69,13 @@ export default function KnockoutTab({
     { key: 'sf', label: 'نصف النهائي' },
     { key: 'final', label: 'المباراة النهائية الكبرى 🏆' }
   ];
+
+  // Final match status and Champion
+  const finalMatch = knockoutMatches.find(m => m.stage === 'final');
+  const champion = finalMatch?.winnerId ? participantsMap[finalMatch.winnerId] : null;
+  const runnerUp = champion ? (
+    finalMatch.winnerId === finalMatch.player1Id ? participantsMap[finalMatch.player2Id] : participantsMap[finalMatch.player1Id]
+  ) : null;
 
   return (
     <div className="tab-content">
@@ -92,6 +98,30 @@ export default function KnockoutTab({
           </button>
         </div>
       </div>
+
+      {/* Champion Podium View (if final match is completed) */}
+      {champion && (
+        <div className="clean-card" style={{ background: 'linear-gradient(135deg, #FEF3C7 0%, #FFFFFF 100%)', border: '2px solid #F59E0B', textAlign: 'center', padding: '32px 20px' }}>
+          <Trophy size={56} color="#D97706" style={{ margin: '0 auto 12px auto' }} />
+          <h2 style={{ fontSize: '1.6rem', fontWeight: 900, color: '#92400E', marginBottom: '4px' }}>
+            🎉 بطل كأس السكن: FC27 🎉
+          </h2>
+          <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--text-main)', marginTop: '8px' }}>
+            {champion.name}
+          </div>
+          <div style={{ fontSize: '0.95rem', color: 'var(--text-muted)' }}>
+            نادي: {champion.team} | {champion.room}
+          </div>
+
+          {runnerUp && (
+            <div style={{ marginTop: '16px', display: 'inline-flex', alignItems: 'center', gap: '8px', background: '#FFFFFF', padding: '8px 16px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+              <Medal size={18} color="#64748B" />
+              <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>الوصيف (المركز الثاني):</span>
+              <b>{runnerUp.name} ({runnerUp.team})</b>
+            </div>
+          )}
+        </div>
+      )}
 
       {knockoutMatches.length === 0 ? (
         <div className="clean-card" style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>

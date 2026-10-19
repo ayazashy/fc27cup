@@ -5,6 +5,7 @@ import GroupsTab from './components/GroupsTab';
 import MatchesTab from './components/MatchesTab';
 import KnockoutTab from './components/KnockoutTab';
 import TvDisplayTab from './components/TvDisplayTab';
+import StatisticsTab from './components/StatisticsTab';
 import SettingsTab from './components/SettingsTab';
 import { 
   Users, 
@@ -12,6 +13,7 @@ import {
   Calendar, 
   Trophy, 
   Tv, 
+  BarChart3,
   Settings, 
   CheckCircle2, 
   AlertCircle 
@@ -122,6 +124,41 @@ export default function App() {
     }
   };
 
+  // 4. Export JSON Backup File
+  const handleExportBackup = () => {
+    const backupData = {
+      name: 'كأس السكن: FC27',
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      participants,
+      groups,
+      matches,
+      config
+    };
+    const jsonStr = JSON.stringify(backupData, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `نسخة_احتياطية_بطولة_FC27_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showNotification('تم تنزيل النسخة الاحتياطية بنجاح!', 'success');
+  };
+
+  // 5. Import JSON Backup File
+  const handleImportBackup = (importedData) => {
+    if (!importedData || (!importedData.participants && !importedData.groups)) {
+      showNotification('ملف النسخة الاحتياطية غير صالح', 'error');
+      return;
+    }
+    if (importedData.participants) setParticipants(importedData.participants);
+    if (importedData.groups) setGroups(importedData.groups);
+    if (importedData.matches) setMatches(importedData.matches);
+    if (importedData.config) setConfig(importedData.config);
+    showNotification('تم استرجاع بيانات النسخة الاحتياطية بنجاح!', 'success');
+  };
+
   const completedMatchesCount = matches.filter(m => m.status === 'completed' || m.status === 'walkover').length;
 
   return (
@@ -149,7 +186,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Header with Logo & Live Sync */}
+      {/* Main Header with Logo & Backup / Live Sync */}
       <Header
         participantsCount={participants.length}
         groupsCount={groups.length}
@@ -158,6 +195,8 @@ export default function App() {
         firestoreStatus={firestoreStatus}
         onSaveToCloud={handleSaveToCloud}
         isSaving={isSaving}
+        onExportBackup={handleExportBackup}
+        onImportBackup={handleImportBackup}
       />
 
       {/* Modern Navigation Tabs */}
@@ -201,6 +240,14 @@ export default function App() {
           >
             <Tv size={18} />
             <span>شاشة صالة التلفزيون</span>
+          </button>
+
+          <button 
+            className={`tab-btn ${activeTab === 'stats' ? 'active' : ''}`}
+            onClick={() => setActiveTab('stats')}
+          >
+            <BarChart3 size={18} />
+            <span>الإحصائيات والجوائز</span>
           </button>
 
           <button 
@@ -262,6 +309,13 @@ export default function App() {
             groups={groups}
             participants={participants}
             config={config}
+          />
+        )}
+
+        {activeTab === 'stats' && (
+          <StatisticsTab
+            matches={matches}
+            participants={participants}
           />
         )}
 

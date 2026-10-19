@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Calendar, Monitor, Search, Filter, CheckCircle2, Clock, Play, Award } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Calendar, Monitor, Search, Filter, Play, Pause, RotateCcw, Clock, Printer } from 'lucide-react';
 import ScoreModal from './ScoreModal';
 
 export default function MatchesTab({ 
@@ -14,6 +14,29 @@ export default function MatchesTab({
   const [statusFilter, setStatusFilter] = useState('all');
   const [consoleFilter, setConsoleFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Built-in Hall Match Timer (Default 12 minutes as per KSU meeting notes)
+  const [timerMinutes, setTimerMinutes] = useState(12);
+  const [timeLeft, setTimeLeft] = useState(12 * 60);
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+
+  useEffect(() => {
+    let interval = null;
+    if (isTimerRunning && timeLeft > 0) {
+      interval = setInterval(() => {
+        setTimeLeft(t => t - 1);
+      }, 1000);
+    } else if (timeLeft === 0 && isTimerRunning) {
+      setIsTimerRunning(false);
+      onNotify('⏰ انتهى وقت المباراة الرسمية!', 'info');
+    }
+    return () => clearInterval(interval);
+  }, [isTimerRunning, timeLeft, onNotify]);
+
+  const resetTimer = (mins = timerMinutes) => {
+    setIsTimerRunning(false);
+    setTimeLeft(mins * 60);
+  };
 
   const participantsMap = React.useMemo(() => {
     const map = {};
@@ -60,8 +83,58 @@ export default function MatchesTab({
     return true;
   });
 
+  const formatTimer = (secs) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
   return (
     <div className="tab-content">
+      {/* Top Bar: Official Hall Match Timer */}
+      <div className="clean-card" style={{ padding: '14px 20px', marginBottom: '16px', background: '#FFFFFF', border: '1px solid var(--border-light)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Clock size={20} color="var(--ksu-green)" />
+            <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>مؤقت وقت المباراة الرسمي:</span>
+            <span className="numeric" style={{ fontSize: '1.5rem', fontWeight: 800, color: timeLeft <= 60 ? '#DC2626' : 'var(--ksu-green)', minWidth: '70px', textAlign: 'center' }}>
+              {formatTimer(timeLeft)}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <select 
+              className="form-select"
+              style={{ width: 'auto', padding: '4px 8px', fontSize: '0.85rem' }}
+              value={timerMinutes}
+              onChange={(e) => {
+                const m = Number(e.target.value);
+                setTimerMinutes(m);
+                resetTimer(m);
+              }}
+            >
+              <option value={10}>10 دقائق (المجموعات)</option>
+              <option value={12}>12 دقيقة (الافتراضي)</option>
+              <option value={15}>15 دقيقة (دور 16 وربع)</option>
+              <option value={20}>20 دقيقة (نصف ونهائي)</option>
+            </select>
+
+            <button 
+              className={`btn ${isTimerRunning ? 'btn-danger' : 'btn-primary'} btn-sm`}
+              onClick={() => setIsTimerRunning(!isTimerRunning)}
+            >
+              {isTimerRunning ? <Pause size={14} /> : <Play size={14} />}
+              {isTimerRunning ? 'إيقاف مؤقت' : 'بدء الشوط'}
+            </button>
+
+            <button className="btn btn-secondary btn-sm" onClick={() => resetTimer()}>
+              <RotateCcw size={14} />
+              إعادة ضبط
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Filters Bar */}
       <div className="clean-card" style={{ padding: '16px 20px', marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>

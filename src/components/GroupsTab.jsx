@@ -1,5 +1,5 @@
-import React from 'react';
-import { Shuffle, RefreshCw, Trophy, Shield, Printer, CheckCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { Shuffle, RefreshCw, Trophy, Shield, Printer, CheckCircle, ArrowLeftRight, X } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { generateGroupsAndMatches, calculateGroupStandings } from '../utils/tournamentEngine';
 
@@ -12,6 +12,10 @@ export default function GroupsTab({
   config,
   onNotify
 }) {
+  const [showSwapModal, setShowSwapModal] = useState(false);
+  const [swapPlayer1, setSwapPlayer1] = useState('');
+  const [swapPlayer2, setSwapPlayer2] = useState('');
+
   const participantsMap = React.useMemo(() => {
     const map = {};
     participants.forEach(p => { map[p.id] = p; });
@@ -35,22 +39,66 @@ export default function GroupsTab({
     setGroups(newGroups);
     setMatches(newMatches);
 
-    // Fire celebration confetti
     try {
       confetti({
         particleCount: 80,
         spread: 70,
         origin: { y: 0.6 }
       });
-    } catch (e) {
-      // ignore if confetti fails
-    }
+    } catch (e) {}
 
     onNotify(`تم بنجاح إجراء القرعة وتوزيع ${confirmedPlayers.length} مشارك على ${newGroups.length} مجموعات!`, 'success');
   };
 
-  const handlePrint = () => {
-    window.print();
+  const handleSwapPlayers = () => {
+    if (!swapPlayer1 || !swapPlayer2 || swapPlayer1 === swapPlayer2) {
+      alert('يرجى تحديد لاعبين مختلفين للتبديل بينهما');
+      return;
+    }
+
+    let g1 = null;
+    let g2 = null;
+
+    groups.forEach(g => {
+      if (g.playerIds.includes(swapPlayer1)) g1 = g;
+      if (g.playerIds.includes(swapPlayer2)) g2 = g;
+    });
+
+    if (!g1 || !g2) {
+      alert('تعذر العثور على مجموعات اللاعبين');
+      return;
+    }
+
+    // Swap in groups
+    const updatedGroups = groups.map(g => {
+      let pIds = [...g.playerIds];
+      if (g.id === g1.id) {
+        pIds = pIds.map(id => id === swapPlayer1 ? swapPlayer2 : id);
+      }
+      if (g.id === g2.id) {
+        pIds = pIds.map(id => id === swapPlayer2 ? swapPlayer1 : id);
+      }
+      return { ...g, playerIds: pIds };
+    });
+
+    // Re-generate group matches
+    const updatedMatches = matches.map(m => {
+      if (m.stage !== 'group') return m;
+      let p1 = m.player1Id;
+      let p2 = m.player2Id;
+      if (p1 === swapPlayer1) p1 = swapPlayer2;
+      else if (p1 === swapPlayer2) p1 = swapPlayer1;
+      if (p2 === swapPlayer1) p2 = swapPlayer2;
+      else if (p2 === swapPlayer2) p2 = swapPlayer1;
+      return { ...m, player1Id: p1, player2Id: p2 };
+    });
+
+    setGroups(updatedGroups);
+    setMatches(updatedMatches);
+    setShowSwapModal(false);
+    setSwapPlayer1('');
+    setSwapPlayer2('');
+    onNotify('تم تبديل اللاعبين بنجاح وتحديث جداول المباريات!', 'success');
   };
 
   return (
@@ -74,10 +122,16 @@ export default function GroupsTab({
               {groups.length === 0 ? 'إجراء القرعة العشوائية' : 'إعادة توزيع القرعة'}
             </button>
             {groups.length > 0 && (
-              <button className="btn btn-secondary btn-sm" onClick={handlePrint}>
-                <Printer size={16} />
-                طباعة الجداول
-              </button>
+              <>
+                <button className="btn btn-secondary btn-sm" onClick={() => setShowSwapModal(true)}>
+                  <ArrowLeftRight size={16} />
+                  تبديل يدوي بين لاعبين
+                </button>
+                <button className="btn btn-secondary btn-sm" onClick={() => window.print()}>
+                  <Printer size={16} />
+                  طباعة الجداول
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -171,6 +225,59 @@ export default function GroupsTab({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Manual Swap Modal */}
+      {showSwapModal && (
+        <div className="modal-overlay" onClick={() => setShowSwapModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <span style={{ fontWeight: 700, fontSize: '1rem' }}>تبديل يدوي بين لاعبين في المجموعات</span>
+              <button style={{ background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setShowSwapModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                حدد اللاعبين اللذين ترغب بتبديل مكانيهما بين المجموعات (مفيد في حال تعارض جدول لاعب):
+              </p>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>اللاعب الأول:</label>
+                <select 
+                  className="form-select"
+                  value={swapPlayer1}
+                  onChange={(e) => setSwapPlayer1(e.target.value)}
+                >
+                  <option value="">اختر اللاعب الأول...</option>
+                  {participants.filter(p => p.status === 'confirmed').map(p => (
+                    <option key={p.id} value={p.id}>{p.name} ({p.team})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>اللاعب الثاني (لإحلال مكانه):</label>
+                <select 
+                  className="form-select"
+                  value={swapPlayer2}
+                  onChange={(e) => setSwapPlayer2(e.target.value)}
+                >
+                  <option value="">اختر اللاعب الثاني...</option>
+                  {participants.filter(p => p.status === 'confirmed').map(p => (
+                    <option key={p.id} value={p.id}>{p.name} ({p.team})</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setShowSwapModal(false)}>إلغاء</button>
+              <button className="btn btn-primary" onClick={handleSwapPlayers}>تنفيذ التبديل</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

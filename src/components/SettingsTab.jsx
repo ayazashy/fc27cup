@@ -1,5 +1,5 @@
-import React from 'react';
-import { Settings, Check, Award, Shield, Monitor } from 'lucide-react';
+import React, { useState } from 'react';
+import { Settings, Check, Award, Shield, Monitor, Cloud, Copy, CheckCheck, AlertCircle } from 'lucide-react';
 
 export default function SettingsTab({ 
   config, 
@@ -7,6 +7,8 @@ export default function SettingsTab({
   onSaveConfig,
   onNotify
 }) {
+  const [copiedRules, setCopiedRules] = useState(false);
+
   const handleChange = (key, value) => {
     setConfig(prev => ({
       ...prev,
@@ -19,8 +21,24 @@ export default function SettingsTab({
     onNotify('تم حفظ وتطبيق إعدادات البطولة بنجاح', 'success');
   };
 
+  const firestoreRulesText = `rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}`;
+
+  const handleCopyRules = () => {
+    navigator.clipboard.writeText(firestoreRulesText);
+    setCopiedRules(true);
+    setTimeout(() => setCopiedRules(false), 3000);
+    onNotify('تم نسخ قواعد حماية Firestore إلى الحافظة!', 'info');
+  };
+
   return (
-    <div className="tab-content" style={{ maxWidth: '800px', margin: '0 auto' }}>
+    <div className="tab-content" style={{ maxWidth: '820px', margin: '0 auto' }}>
       <div className="clean-card">
         <div className="card-header">
           <div className="card-title">
@@ -48,7 +66,7 @@ export default function SettingsTab({
                   onChange={(e) => handleChange('playersPerGroup', Number(e.target.value))}
                 >
                   <option value={3}>3 لاعبين</option>
-                  <option value={4}>4 لاعبين (الموصى به - النظام الرسمي)</option>
+                  <option value={4}>4 لاعبين (الموصى به - النظام الرسمي لـ 128 لاعب)</option>
                   <option value={5}>5 لاعبين</option>
                   <option value={6}>6 لاعبين</option>
                 </select>
@@ -156,6 +174,32 @@ export default function SettingsTab({
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                 يتم توزيع وإسناد المباريات على هذه الأجهزة لمتابعة الصالة لحظة بلحظة
               </span>
+            </div>
+          </div>
+
+          <hr style={{ border: 'none', borderTop: '1px solid var(--border-light)' }} />
+
+          {/* Section: Firebase Cloud Status & Rules */}
+          <div>
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Cloud size={18} color="#2563EB" />
+              إعدادات قاعدة بيانات Firebase Firestore
+            </h3>
+
+            <div style={{ background: 'var(--bg-subtle)', padding: '14px', borderRadius: '8px', border: '1px solid var(--border-light)', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>قواعد الأمان (Firestore Security Rules):</span>
+                <button className="btn btn-secondary btn-sm" onClick={handleCopyRules}>
+                  {copiedRules ? <CheckCheck size={14} color="#10B981" /> : <Copy size={14} />}
+                  <span>{copiedRules ? 'تم النسخ!' : 'نسخ القواعد'}</span>
+                </button>
+              </div>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                إذا ظهر تنبيه نقص الصلاحيات (Missing permissions)، الصق هذا الكود في تبويب Rules بقنصل Firebase:
+              </p>
+              <pre style={{ direction: 'ltr', background: '#FFFFFF', padding: '10px', borderRadius: '6px', fontSize: '0.8rem', border: '1px solid var(--border-strong)', overflowX: 'auto' }}>
+                {firestoreRulesText}
+              </pre>
             </div>
           </div>
 
