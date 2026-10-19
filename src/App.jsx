@@ -16,7 +16,9 @@ import {
   BarChart3,
   Settings, 
   CheckCircle2, 
-  AlertCircle 
+  AlertCircle,
+  ExternalLink,
+  Share2
 } from 'lucide-react';
 import { 
   saveTournamentToFirestore, 
@@ -46,6 +48,10 @@ export default function App() {
   const [firestoreStatus, setFirestoreStatus] = useState({ connected: false, error: null });
   const [isSaving, setIsSaving] = useState(false);
   const [notification, setNotification] = useState(null);
+
+  // Check if opened as dedicated public student portal (?view=tv or #/tv)
+  const isPublicUrl = window.location.search.includes('view=tv') || window.location.hash.includes('tv');
+  const [isPublicMode, setIsPublicMode] = useState(isPublicUrl);
 
   const showNotification = (message, type = 'info') => {
     setNotification({ message, type });
@@ -161,6 +167,50 @@ export default function App() {
 
   const completedMatchesCount = matches.filter(m => m.status === 'completed' || m.status === 'walkover').length;
 
+  // 6. IF PUBLIC MODE: Render dedicated student spectator portal
+  if (isPublicMode) {
+    return (
+      <div className="app-layout" style={{ background: '#F8FAFC' }}>
+        {/* Public Top Bar */}
+        <header style={{ background: '#FFFFFF', borderBottom: '1px solid var(--border-light)', padding: '12px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <img src="/logo.png" alt="شعار كأس السكن FC27" style={{ height: '42px', width: 'auto', objectFit: 'contain' }} />
+            <div>
+              <h1 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--ksu-green)' }}>
+                بوابة متابعة مباريات كأس السكن FC27 — سكن طلاب KSU
+              </h1>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                بث مباشر لجداول الصالة والأجهزة والنتائج المحدثة لحظياً
+              </p>
+            </div>
+          </div>
+
+          <button 
+            className="btn btn-secondary btn-sm"
+            onClick={() => {
+              window.history.pushState({}, '', window.location.pathname);
+              setIsPublicMode(false);
+            }}
+          >
+            لوحة الإدارة والتحكم
+          </button>
+        </header>
+
+        <main className="main-content" style={{ padding: '20px' }}>
+          <TvDisplayTab
+            matches={matches}
+            groups={groups}
+            participants={participants}
+            config={config}
+            isPublicMode={true}
+            onNotify={showNotification}
+          />
+        </main>
+      </div>
+    );
+  }
+
+  // ADMIN MODE
   return (
     <div className="app-layout">
       {/* Toast Notification */}
@@ -309,6 +359,8 @@ export default function App() {
             groups={groups}
             participants={participants}
             config={config}
+            isPublicMode={false}
+            onNotify={showNotification}
           />
         )}
 
