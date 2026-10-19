@@ -74,9 +74,59 @@ export default function ScheduleDaysTab({
     };
   }, [matches, numCircles]);
 
+  // Today's local date string
+  const getTodayDateStr = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  const todayDateStr = getTodayDateStr();
+
+  const dayDates = config.dayDates || {
+    1: todayDateStr,
+    2: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+    knockout: new Date(Date.now() + 86400000).toISOString().slice(0, 10)
+  };
+
+  let autoTodayDay = 1;
+  for (let d = 1; d <= selectedDaysCount; d++) {
+    if (dayDates[d] === todayDateStr) {
+      autoTodayDay = d;
+      break;
+    }
+  }
+
+  const handleUpdateDayDate = (dayKey, dateVal) => {
+    if (!setConfig) return;
+    setConfig(prev => ({
+      ...prev,
+      dayDates: {
+        ...(prev.dayDates || {}),
+        [dayKey]: dateVal
+      }
+    }));
+    onNotify(`تم تحديث موعد اليوم ${dayKey} إلى ${dateVal}`, 'success');
+  };
+
+  const handleSetActiveDayOverride = (overrideVal) => {
+    if (!setConfig) return;
+    setConfig(prev => ({
+      ...prev,
+      activeDayOverride: overrideVal
+    }));
+    if (overrideVal === null) {
+      onNotify('تمت العودة للوضع التلقائي: يتم تفعيل اليوم المطابق لتاريخ اليوم تلقائياً', 'info');
+    } else {
+      onNotify(`تم تفعيل اليوم ${overrideVal} يدوياً كاليوم النشط الآن! ستعمل أجهزته بالأخضر`, 'success');
+    }
+  };
+
   // Apply Day Splitting to matches
   const handleApplySplit = (days = selectedDaysCount) => {
-    const updated = splitMatchesIntoDays(matches, participants, days);
+    const consolesCount = Number(config.consolesCount) || 5;
+    const updated = splitMatchesIntoDays(matches, participants, days, consolesCount);
     setMatches(updated);
     if (setConfig) {
       setConfig(prev => ({ ...prev, tournamentDays: days }));
@@ -168,6 +218,98 @@ export default function ScheduleDaysTab({
 
           <div style={{ fontSize: '0.825rem', color: 'var(--text-muted)' }}>
             💡 إجمالي الدورات الكاملة للمجموعات: <b>{numCircles} دورات كاملة</b> ({playersPerGroup} لاعبين بالرول - 1)
+          </div>
+        </div>
+
+        {/* SECTION: Tournament Days Dates & Live Day Controller */}
+        <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-light)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ fontWeight: 800, fontSize: '0.98rem', color: 'var(--ksu-green)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <CalendarDays size={20} />
+              <span>تحديد تواريخ أيام البطولة والأدوار الإقصائية (Tournament Dates):</span>
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              تاريخ اليوم الفعلي: <b className="numeric" style={{ color: 'var(--ksu-green)' }}>{todayDateStr}</b>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '14px' }}>
+            <div style={{ background: '#F8FAFC', padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '6px', color: 'var(--text-main)' }}>
+                🗓️ موعد اليوم الأول (Day 1):
+              </label>
+              <input 
+                type="date" 
+                className="form-input numeric"
+                value={dayDates[1] || ''}
+                onChange={(e) => handleUpdateDayDate(1, e.target.value)}
+              />
+              <div style={{ fontSize: '0.72rem', marginTop: '4px', fontWeight: 600, color: dayDates[1] === todayDateStr ? '#059669' : 'var(--text-dim)' }}>
+                {dayDates[1] === todayDateStr ? '🟢 اليوم 1 هو تاريخ اليوم' : (dayDates[1] > todayDateStr ? '⏳ موعد قادم' : '✓ موعد سابق')}
+              </div>
+            </div>
+
+            <div style={{ background: '#F8FAFC', padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '6px', color: 'var(--text-main)' }}>
+                🗓️ موعد اليوم الثاني (Day 2):
+              </label>
+              <input 
+                type="date" 
+                className="form-input numeric"
+                value={dayDates[2] || ''}
+                onChange={(e) => handleUpdateDayDate(2, e.target.value)}
+              />
+              <div style={{ fontSize: '0.72rem', marginTop: '4px', fontWeight: 600, color: dayDates[2] === todayDateStr ? '#059669' : 'var(--text-dim)' }}>
+                {dayDates[2] === todayDateStr ? '🟢 اليوم 2 هو تاريخ اليوم' : (dayDates[2] > todayDateStr ? '⏳ موعد قادم' : '✓ موعد سابق')}
+              </div>
+            </div>
+
+            <div style={{ background: '#F8FAFC', padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '6px', color: 'var(--text-main)' }}>
+                🏆 موعد يوم الإقصائيات (Finals):
+              </label>
+              <input 
+                type="date" 
+                className="form-input numeric"
+                value={dayDates.knockout || ''}
+                onChange={(e) => handleUpdateDayDate('knockout', e.target.value)}
+              />
+              <div style={{ fontSize: '0.72rem', marginTop: '4px', fontWeight: 600, color: dayDates.knockout === todayDateStr ? '#059669' : 'var(--text-dim)' }}>
+                {dayDates.knockout === todayDateStr ? '🟢 يوم الإقصائيات والنهائي هو اليوم' : '🏆 مباريات دور خروج المغلوب'}
+              </div>
+            </div>
+          </div>
+
+          {/* Active Day Override Controls */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                وضع تفعيل أجهزة الصالة:
+              </span>
+              <div style={{ display: 'flex', background: 'var(--bg-subtle)', padding: '3px', borderRadius: '8px' }}>
+                <button 
+                  className={`btn btn-sm ${config.activeDayOverride === null ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '4px 10px', border: 'none', fontSize: '0.78rem' }}
+                  onClick={() => handleSetActiveDayOverride(null)}
+                >
+                  تلقائي بحسب التاريخ ({autoTodayDay ? `اليوم ${autoTodayDay}` : 'غير محدد'})
+                </button>
+                {Array.from({ length: selectedDaysCount }, (_, i) => i + 1).map(d => (
+                  <button 
+                    key={d}
+                    className={`btn btn-sm ${config.activeDayOverride === d ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ padding: '4px 10px', border: 'none', fontSize: '0.78rem' }}
+                    onClick={() => handleSetActiveDayOverride(d)}
+                  >
+                    تفعيل اليوم {d} يدوياً
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              ⚡ اليوم النشط تظهر مبارياته بالأخضر في الصالة، بينما الأيام المستقبلية تظهر كمجدولة قيد الانتظار.
+            </div>
           </div>
         </div>
       </div>

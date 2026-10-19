@@ -68,108 +68,119 @@ export function calculateEstimatedMatchTime(matchesAhead = 0, minDuration = 10, 
  * Dynamic Load Balancing Across Consoles
  * If a device has finished all its matches or has significantly fewer queued matches,
  * it takes over remaining queued matches from overloaded devices so workload is equalized!
+ * Balanced independently per tournament day so Day 1 and Day 2 matches never intersect.
  */
-export function rebalanceRemainingMatches(matches, consolesCount = 5) {
+export function rebalanceRemainingMatches(matches, consolesCount = 5, targetDay = null) {
   const activeMatches = matches.map(m => ({ ...m }));
+  const distinctDays = [...new Set(activeMatches.map(m => m.dayNumber || 1))];
+  const allRebalanced = [];
 
-  // Separate non-movable (completed, walkover, live) from movable (scheduled)
-  const lockedMatches = activeMatches.filter(
-    m => m.status === 'completed' || m.status === 'walkover' || m.status === 'live'
-  );
-  const queuedMatches = activeMatches.filter(m => m.status === 'scheduled');
-
-  if (queuedMatches.length === 0) return activeMatches;
-
-  // Track players currently active in a live match to avoid scheduling them simultaneously
-  const livePlayerIds = new Set();
-  lockedMatches.filter(m => m.status === 'live').forEach(m => {
-    if (m.player1Id) livePlayerIds.add(m.player1Id);
-    if (m.player2Id) livePlayerIds.add(m.player2Id);
-  });
-
-  // Track queue per console of remaining scheduled matches
-  const queues = {};
-  for (let c = 1; c <= consolesCount; c++) {
-    const hasLive = lockedMatches.some(m => m.consoleId === c && m.status === 'live');
-    queues[c] = {
-      consoleId: c,
-      hasLive,
-      matches: queuedMatches.filter(m => m.consoleId === c).sort((a, b) => (a.orderOnConsole || 0) - (b.orderOnConsole || 0))
-    };
-  }
-
-  // Iteratively balance queues: move from max queue to min queue if difference > 1
-  let balanced = false;
-  let iterations = 0;
-
-  while (!balanced && iterations < 150) {
-    iterations++;
-
-    // Calculate effective workload weight per console (live match counts as 1 in progress)
-    const queueWeights = Object.values(queues).map(q => ({
-      consoleId: q.consoleId,
-      weight: q.matches.length + (q.hasLive ? 1 : 0),
-      matchesCount: q.matches.length
-    }));
-
-    queueWeights.sort((a, b) => b.weight - a.weight);
-
-    const maxQueue = queueWeights[0];
-    const minQueue = queueWeights[queueWeights.length - 1];
-
-    if (maxQueue.weight - minQueue.weight > 1 && maxQueue.matchesCount > 0) {
-      const sourceMatches = queues[maxQueue.consoleId].matches;
-
-      // If minQueue has 0 matches and no live match (completely idle device):
-      // Pick earliest round match whose players are not active in a live match right now
-      let matchIdxToMove = -1;
-      if (queues[minQueue.consoleId].matches.length === 0 && !queues[minQueue.consoleId].hasLive) {
-        matchIdxToMove = sourceMatches.findIndex(
-          m => !livePlayerIds.has(m.player1Id) && !livePlayerIds.has(m.player2Id)
-        );
-      }
-
-      if (matchIdxToMove === -1) {
-        matchIdxToMove = sourceMatches.length - 1;
-      }
-
-      const [matchToMove] = sourceMatches.splice(matchIdxToMove, 1);
-      matchToMove.consoleId = minQueue.consoleId;
-      queues[minQueue.consoleId].matches.push(matchToMove);
-    } else {
-      balanced = true;
+  distinctDays.forEach(day => {
+    const dayMatches = activeMatches.filter(m => (m.dayNumber || 1) === day);
+    if (targetDay !== null && day !== targetDay) {
+      allRebalanced.push(...dayMatches);
+      return;
     }
-  }
 
-  // Re-index orderOnConsole per console preserving round-by-round fairness
-  for (let c = 1; c <= consolesCount; c++) {
-    const consoleLocked = lockedMatches
-      .filter(m => m.consoleId === c)
-      .sort((a, b) => (a.orderOnConsole || 0) - (b.orderOnConsole || 0));
+    const lockedMatches = dayMatches.filter(
+      m => m.status === 'completed' || m.status === 'walkover' || m.status === 'live'
+    );
+    const queuedMatches = dayMatches.filter(m => m.status === 'scheduled');
 
-    let orderCounter = 1;
-    consoleLocked.forEach(m => { m.orderOnConsole = orderCounter++; });
+    if (queuedMatches.length === 0) {
+      allRebalanced.push(...dayMatches);
+      return;
+    }
 
-    const consoleQueued = queues[c].matches.sort((a, b) => {
-      if (a.roundNumber && b.roundNumber && a.roundNumber !== b.roundNumber) {
-        return a.roundNumber - b.roundNumber;
-      }
-      return (a.matchNumber || 0) - (b.matchNumber || 0);
+    // Track players currently active in a live match to avoid scheduling them simultaneously
+    const livePlayerIds = new Set();
+    lockedMatches.filter(m => m.status === 'live').forEach(m => {
+      if (m.player1Id) livePlayerIds.add(m.player1Id);
+      if (m.player2Id) livePlayerIds.add(m.player2Id);
     });
 
-    consoleQueued.forEach(m => { m.orderOnConsole = orderCounter++; });
-  }
+    // Track queue per console of remaining scheduled matches for this day
+    const queues = {};
+    for (let c = 1; c <= consolesCount; c++) {
+      const hasLive = lockedMatches.some(m => m.consoleId === c && m.status === 'live');
+      queues[c] = {
+        consoleId: c,
+        hasLive,
+        matches: queuedMatches.filter(m => m.consoleId === c).sort((a, b) => (a.orderOnConsole || 0) - (b.orderOnConsole || 0))
+      };
+    }
 
-  // Re-combine all matches
-  const allRebalanced = [];
-  for (let c = 1; c <= consolesCount; c++) {
-    const cLocked = lockedMatches.filter(m => m.consoleId === c);
-    const cQueued = queues[c].matches;
-    allRebalanced.push(...cLocked, ...cQueued);
-  }
+    // Iteratively balance queues: move from max queue to min queue if difference > 1
+    let balanced = false;
+    let iterations = 0;
 
-  const otherMatches = activeMatches.filter(m => !m.consoleId);
-  return [...allRebalanced, ...otherMatches].sort((a, b) => (a.matchNumber || 0) - (b.matchNumber || 0));
+    while (!balanced && iterations < 150) {
+      iterations++;
+
+      const queueWeights = Object.values(queues).map(q => ({
+        consoleId: q.consoleId,
+        weight: q.matches.length + (q.hasLive ? 1 : 0),
+        matchesCount: q.matches.length
+      }));
+
+      queueWeights.sort((a, b) => b.weight - a.weight);
+
+      const maxQueue = queueWeights[0];
+      const minQueue = queueWeights[queueWeights.length - 1];
+
+      if (maxQueue.weight - minQueue.weight > 1 && maxQueue.matchesCount > 0) {
+        const sourceMatches = queues[maxQueue.consoleId].matches;
+
+        let matchIdxToMove = -1;
+        if (queues[minQueue.consoleId].matches.length === 0 && !queues[minQueue.consoleId].hasLive) {
+          matchIdxToMove = sourceMatches.findIndex(
+            m => !livePlayerIds.has(m.player1Id) && !livePlayerIds.has(m.player2Id)
+          );
+        }
+
+        if (matchIdxToMove === -1) {
+          matchIdxToMove = sourceMatches.length - 1;
+        }
+
+        const [matchToMove] = sourceMatches.splice(matchIdxToMove, 1);
+        matchToMove.consoleId = minQueue.consoleId;
+        queues[minQueue.consoleId].matches.push(matchToMove);
+      } else {
+        balanced = true;
+      }
+    }
+
+    // Re-index orderOnConsole per console preserving round-by-round fairness for this day
+    for (let c = 1; c <= consolesCount; c++) {
+      const consoleLocked = lockedMatches
+        .filter(m => m.consoleId === c)
+        .sort((a, b) => (a.orderOnConsole || 0) - (b.orderOnConsole || 0));
+
+      let orderCounter = 1;
+      consoleLocked.forEach(m => { m.orderOnConsole = orderCounter++; });
+
+      const consoleQueued = queues[c].matches.sort((a, b) => {
+        if (a.roundNumber && b.roundNumber && a.roundNumber !== b.roundNumber) {
+          return a.roundNumber - b.roundNumber;
+        }
+        return (a.matchNumber || 0) - (b.matchNumber || 0);
+      });
+
+      consoleQueued.forEach(m => { m.orderOnConsole = orderCounter++; });
+    }
+
+    // Re-combine all matches for this day
+    for (let c = 1; c <= consolesCount; c++) {
+      const cLocked = lockedMatches.filter(m => m.consoleId === c);
+      const cQueued = queues[c].matches;
+      allRebalanced.push(...cLocked, ...cQueued);
+    }
+
+    const otherDayMatches = dayMatches.filter(m => !m.consoleId);
+    allRebalanced.push(...otherDayMatches);
+  });
+
+  return allRebalanced.sort((a, b) => (a.matchNumber || 0) - (b.matchNumber || 0));
 }
 
 export function generateGroupsAndMatches(participants, config) {
@@ -284,7 +295,7 @@ export function generateGroupsAndMatches(participants, config) {
 
     // Automatically split matches into days based on configured tournament days (default: 2)
   const initialDays = Number(config.tournamentDays) || 2;
-  const matchesWithDays = splitMatchesIntoDays(matches, activePlayers, initialDays);
+  const matchesWithDays = splitMatchesIntoDays(matches, activePlayers, initialDays, consolesCount);
 
   return { groups, matches: matchesWithDays };
 }
@@ -293,7 +304,7 @@ export function generateGroupsAndMatches(participants, config) {
  * Automatically determine the Current (Now) and Next match on each console,
  * with queue positions and estimated start times
  */
-export function getConsoleStatusMap(matches, consolesCount = 5, minDuration = 10, maxDuration = 15) {
+export function getConsoleStatusMap(matches, consolesCount = 5, minDuration = 10, maxDuration = 15, isLiveActive = true) {
   const map = {};
   const now = new Date();
 
@@ -302,16 +313,21 @@ export function getConsoleStatusMap(matches, consolesCount = 5, minDuration = 10
       .filter(m => m.consoleId === c)
       .sort((a, b) => (a.orderOnConsole || 0) - (b.orderOnConsole || 0));
 
-    const liveMatch = consoleMatches.find(m => m.status === 'live');
-    const firstUnfinished = consoleMatches.find(m => m.status !== 'completed' && m.status !== 'walkover');
-    const current = liveMatch || firstUnfinished || null;
-
+    let current = null;
     let nextMatch = null;
-    if (current) {
-      const remaining = consoleMatches.filter(
-        m => m.id !== current.id && m.status !== 'completed' && m.status !== 'walkover'
-      );
-      nextMatch = remaining[0] || null;
+
+    // Only activate Current (Green) and Next (Yellow) matches if this day is currently active / today!
+    if (isLiveActive) {
+      const liveMatch = consoleMatches.find(m => m.status === 'live');
+      const firstUnfinished = consoleMatches.find(m => m.status !== 'completed' && m.status !== 'walkover');
+      current = liveMatch || firstUnfinished || null;
+
+      if (current) {
+        const remaining = consoleMatches.filter(
+          m => m.id !== current.id && m.status !== 'completed' && m.status !== 'walkover'
+        );
+        nextMatch = remaining[0] || null;
+      }
     }
 
     // Attach estimated times to all unfinished matches on this console
@@ -323,6 +339,18 @@ export function getConsoleStatusMap(matches, consolesCount = 5, minDuration = 10
 
       if (isDone) {
         return { ...m, estimatedTime: null };
+      }
+
+      if (!isLiveActive) {
+        return {
+          ...m,
+          estimatedTime: {
+            isNow: false,
+            isFutureDay: true,
+            label: 'مجدولة لليوم القادم',
+            rangeStr: 'مجدولة'
+          }
+        };
       }
 
       if (isCur && m.status === 'live') {
@@ -367,7 +395,8 @@ export function getConsoleStatusMap(matches, consolesCount = 5, minDuration = 10
       completedCount,
       queuedCount,
       totalCount: consoleMatches.length,
-      isFinished: completedCount === consoleMatches.length && consoleMatches.length > 0
+      isFinished: completedCount === consoleMatches.length && consoleMatches.length > 0,
+      isLiveActive
     };
   }
   return map;
@@ -643,7 +672,7 @@ export function propagateWinnerInTree(matches, updatedMatch) {
  * - Day 2: The reverse! Players who played once on Day 1 play twice, and players who played twice on Day 1 play once.
  * At the end of Day 2, all players have completed exactly the same total matches (p - 1).
  */
-export function splitMatchesIntoDays(matches, participants = [], daysCount = 2) {
+export function splitMatchesIntoDays(matches, participants = [], daysCount = 2, consolesCount = 5) {
   const dCount = Math.max(1, Number(daysCount) || 2);
   const groupMatches = matches.filter(m => m.stage === 'group' || m.groupId);
   const koMatches = matches.filter(m => m.stage !== 'group' && !m.groupId);
@@ -724,10 +753,53 @@ export function splitMatchesIntoDays(matches, participants = [], daysCount = 2) 
     }
   }
 
-  return matches.map(m => ({
-    ...m,
-    dayNumber: matchDayMap[m.id] || 1
-  }));
+  // Completely partition console queues per day so Day 1 and Day 2 do NOT intersect!
+  const finalMatches = [];
+  const cCount = Number(consolesCount) || 5;
+
+  for (let d = 1; d <= dCount; d++) {
+    const dayMatches = matches
+      .filter(m => (matchDayMap[m.id] || 1) === d)
+      .sort((a, b) => {
+        // Group matches first by round, then knockout matches
+        const aIsKo = a.stage !== 'group' && !a.groupId;
+        const bIsKo = b.stage !== 'group' && !b.groupId;
+        if (!aIsKo && bIsKo) return -1;
+        if (aIsKo && !bIsKo) return 1;
+        if (!aIsKo && !bIsKo) {
+          if ((a.roundNumber || 1) !== (b.roundNumber || 1)) {
+            return (a.roundNumber || 1) - (b.roundNumber || 1);
+          }
+        }
+        return (a.matchNumber || 0) - (b.matchNumber || 0);
+      });
+
+    const consoleCounters = {};
+    for (let c = 1; c <= cCount; c++) {
+      consoleCounters[c] = 0;
+    }
+
+    dayMatches.forEach((m, idx) => {
+      const assignedConsole = (idx % cCount) + 1;
+      consoleCounters[assignedConsole] += 1;
+      finalMatches.push({
+        ...m,
+        dayNumber: d,
+        consoleId: assignedConsole,
+        orderOnConsole: consoleCounters[assignedConsole]
+      });
+    });
+  }
+
+  // Preserve any unmatched items if any
+  const matchedIds = new Set(finalMatches.map(m => m.id));
+  matches.forEach(m => {
+    if (!matchedIds.has(m.id)) {
+      finalMatches.push({ ...m, dayNumber: 1 });
+    }
+  });
+
+  return finalMatches.sort((a, b) => (a.matchNumber || 0) - (b.matchNumber || 0));
 }
 
 /**

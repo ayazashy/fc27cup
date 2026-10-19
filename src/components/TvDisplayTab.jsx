@@ -35,10 +35,39 @@ export default function TvDisplayTab({
     return () => clearInterval(tickInterval);
   }, []);
 
+  const getTodayDateStr = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  const todayDateStr = getTodayDateStr();
+  const dayDates = config.dayDates || { 1: todayDateStr };
+  const numTournamentDays = Number(config.tournamentDays) || 2;
+
+  let autoTodayDay = 1;
+  for (let d = 1; d <= numTournamentDays; d++) {
+    if (dayDates[d] === todayDateStr) {
+      autoTodayDay = d;
+      break;
+    }
+  }
+
+  const effectiveActiveDay = config.activeDayOverride ? Number(config.activeDayOverride) : autoTodayDay;
+  const [tvDay, setTvDay] = useState(effectiveActiveDay);
+
+  const isTvDayActive = (config.activeDayOverride === tvDay) || (dayDates[tvDay] === todayDateStr);
+  const isFutureDay = !isTvDayActive && dayDates[tvDay] && (dayDates[tvDay] > todayDateStr);
+
+  const tvDayMatches = React.useMemo(() => {
+    return matches.filter(m => (m.dayNumber || 1) === tvDay);
+  }, [matches, tvDay]);
+
   const consolesCount = Number(config.consolesCount) || 5;
   const consoleStatusMap = React.useMemo(() => {
-    return getConsoleStatusMap(matches, consolesCount, minDuration, maxDuration);
-  }, [matches, consolesCount, minDuration, maxDuration, timeTick]);
+    return getConsoleStatusMap(tvDayMatches, consolesCount, minDuration, maxDuration, isTvDayActive);
+  }, [tvDayMatches, consolesCount, minDuration, maxDuration, isTvDayActive, timeTick]);
 
   // Auto-rotate tabs for projector display (18 seconds per tab)
   useEffect(() => {
@@ -255,7 +284,43 @@ export default function TvDisplayTab({
 
       {/* TAB 1: Consoles & Full Queue of Matches per Device */}
       {activeTab === 'consoles' && (
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(280px, 1fr))`, gap: '16px' }}>
+        <div>
+          {/* Day Selector & Future Day Notice */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '16px', background: '#FFFFFF', padding: '10px 16px', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>اختر اليوم:</span>
+              <div style={{ display: 'flex', background: 'var(--bg-subtle)', padding: '3px', borderRadius: '8px' }}>
+                {Array.from({ length: numTournamentDays }, (_, i) => i + 1).map(d => {
+                  const dDate = dayDates[d];
+                  const isDAct = (config.activeDayOverride === d) || (dDate === todayDateStr);
+                  const isDFut = !isDAct && dDate && dDate > todayDateStr;
+                  return (
+                    <button
+                      key={d}
+                      className={`btn btn-sm ${tvDay === d ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ padding: '4px 12px', border: 'none', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                      onClick={() => setTvDay(d)}
+                    >
+                      <span>اليوم {d}</span>
+                      <span style={{ fontSize: '0.7rem' }}>
+                        {isDAct ? '🟢' : (isDFut ? '⏳' : '✓')}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={{ fontSize: '0.8rem', color: isTvDayActive ? '#059669' : (isFutureDay ? '#2563EB' : 'var(--text-muted)'), fontWeight: 700 }}>
+              {isTvDayActive ? (
+                <span>🟢 اليوم {tvDay} ({dayDates[tvDay] || ''}) — الصالة نشطة ومباشرة الآن</span>
+              ) : (
+                <span>{isFutureDay ? `⏳ اليوم ${tvDay} مجدول لتاريخ ${dayDates[tvDay] || ''} (قيد الانتظار لم تبدأ بعد)` : `✓ اليوم ${tvDay} (سابق)`}</span>
+              )}
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(280px, 1fr))`, gap: '16px' }}>
           {Array.from({ length: consolesCount }, (_, i) => i + 1).map(cId => {
             const cData = consoleStatusMap[cId] || { matches: [], currentMatch: null, nextMatch: null };
             const current = cData.currentMatch;
@@ -273,22 +338,38 @@ export default function TvDisplayTab({
                     <Monitor size={20} color="var(--ksu-green)" />
                     <span style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--text-main)' }}>جهاز {cId}</span>
                   </div>
-                  <span className="badge badge-gray numeric">{cData.matches.length} مباريات</span>
+                  <span className="badge badge-gray numeric">اليوم {tvDay}: {cData.matches.length} مباريات</span>
                 </div>
 
-                {/* CURRENT LIVE MATCH (الآن على الجهاز) */}
-                <div style={{ 
-                  background: current ? '#ECFDF5' : 'var(--bg-subtle)', 
-                  border: current ? '2px solid #059669' : '1px dashed var(--border-strong)', 
-                  borderRadius: '10px', 
-                  padding: '12px' 
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                    <span style={{ fontWeight: 800, fontSize: '0.8rem', color: current ? '#065F46' : 'var(--text-muted)' }}>
-                      🟢 الجارية الآن على الجهاز:
-                    </span>
-                    {current && <span className="badge badge-green">مباراة #{current.matchNumber}</span>}
+                {/* CURRENT LIVE MATCH or FUTURE NOTICE */}
+                {!isTvDayActive ? (
+                  <div style={{ 
+                    background: '#F8FAFC', 
+                    border: '1.5px dashed #94A3B8', 
+                    borderRadius: '10px', 
+                    padding: '14px',
+                    textAlign: 'center'
+                  }}>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: '2px' }}>
+                      ⏳ مجدولة لتاريخ {dayDates[tvDay] || ''}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                      المباريات قيد الانتظار ولم تبدأ بعد
+                    </div>
                   </div>
+                ) : (
+                  <div style={{ 
+                    background: current ? '#ECFDF5' : 'var(--bg-subtle)', 
+                    border: current ? '2px solid #059669' : '1px dashed var(--border-strong)', 
+                    borderRadius: '10px', 
+                    padding: '12px' 
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <span style={{ fontWeight: 800, fontSize: '0.8rem', color: current ? '#065F46' : 'var(--text-muted)' }}>
+                        🟢 الجارية الآن على الجهاز:
+                      </span>
+                      {current && <span className="badge badge-green">مباراة #{current.matchNumber}</span>}
+                    </div>
 
                   {current ? (
                     <div>
@@ -318,9 +399,10 @@ export default function TvDisplayTab({
                     </div>
                   )}
                 </div>
+              )}
 
                 {/* NEXT MATCH (التالي للاستعداد) */}
-                {next && (
+                {isTvDayActive && next && (
                   <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: '8px', padding: '10px 12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
                       <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#92400E' }}>
@@ -419,6 +501,7 @@ export default function TvDisplayTab({
               </div>
             );
           })}
+          </div>
         </div>
       )}
 

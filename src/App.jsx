@@ -30,6 +30,10 @@ import {
 
 const STORAGE_KEY = 'ksu_fc27_tournament_state_v1';
 
+const todayIso = new Date().toISOString().slice(0, 10);
+const tomorrowIso = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+const dayAfterIso = new Date(Date.now() + 86400000 * 2).toISOString().slice(0, 10);
+
 const DEFAULT_CONFIG = {
   playersPerGroup: 4,
   qualifiersPerGroup: 2,
@@ -38,6 +42,13 @@ const DEFAULT_CONFIG = {
   pointsLoss: 0,
   consolesCount: 5,
   tournamentDays: 2,
+  dayDates: {
+    1: todayIso,
+    2: tomorrowIso,
+    3: dayAfterIso,
+    knockout: tomorrowIso
+  },
+  activeDayOverride: null, // null = auto by current date, or 1, 2, etc.
   minMatchDuration: 10,
   maxMatchDuration: 15,
   forfeitScoreWinner: 3,
@@ -351,6 +362,7 @@ export default function App() {
             setMatches={setMatches}
             participants={participants}
             config={config}
+            setConfig={setConfig}
             onNotify={showNotification}
           />
         )}

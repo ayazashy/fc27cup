@@ -203,8 +203,94 @@ service cloud.firestore {
               </select>
             </div>
 
-            <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '6px', padding: '10px 14px', fontSize: '0.8rem', color: '#166534' }}>
+            <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '6px', padding: '10px 14px', fontSize: '0.8rem', color: '#166534', marginBottom: '16px' }}>
               💡 <b>مبدأ التناظر العكسي العادل (في نظام اليومين):</b> يقسم النظام المباريات بحيث يلعب 50% من الطلاب مباراتين باليوم الأول ومباراة باليوم الثاني، والـ 50% الآخرون العكس تماماً، ليصبح مجموع مباريات كل لاعب 3 مباريات بنهاية دور المجموعات بالتساوي التام.
+            </div>
+
+            {/* Sub-section: Day Dates */}
+            <div style={{ background: 'var(--bg-subtle)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
+              <h4 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '12px', color: 'var(--text-main)' }}>
+                🗓️ تحديد التواريخ الرسمية لأيام البطولة:
+              </h4>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '14px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>
+                    تاريخ اليوم الأول (Day 1):
+                  </label>
+                  <input 
+                    type="date"
+                    className="form-input numeric"
+                    value={config.dayDates?.[1] || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setConfig(prev => ({
+                        ...prev,
+                        dayDates: { ...(prev.dayDates || {}), 1: val }
+                      }));
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>
+                    تاريخ اليوم الثاني (Day 2):
+                  </label>
+                  <input 
+                    type="date"
+                    className="form-input numeric"
+                    value={config.dayDates?.[2] || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setConfig(prev => ({
+                        ...prev,
+                        dayDates: { ...(prev.dayDates || {}), 2: val }
+                      }));
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>
+                    تاريخ يوم الإقصائيات النهائي:
+                  </label>
+                  <input 
+                    type="date"
+                    className="form-input numeric"
+                    value={config.dayDates?.knockout || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setConfig(prev => ({
+                        ...prev,
+                        dayDates: { ...(prev.dayDates || {}), knockout: val }
+                      }));
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Active Day Override selector */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>
+                  التحكم باليوم النشط للصالة (Active Day Override):
+                </label>
+                <select 
+                  className="form-select"
+                  value={config.activeDayOverride ?? 'auto'}
+                  onChange={(e) => {
+                    const val = e.target.value === 'auto' ? null : Number(e.target.value);
+                    setConfig(prev => ({ ...prev, activeDayOverride: val }));
+                  }}
+                >
+                  <option value="auto">تلقائي بحسب تاريخ اليوم الحالي (موصى به)</option>
+                  <option value="1">تفعيل اليوم 1 يدوياً الآن</option>
+                  <option value="2">تفعيل اليوم 2 يدوياً الآن</option>
+                  <option value="3">تفعيل اليوم 3 يدوياً الآن</option>
+                </select>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                  اليوم النشط تظهر مبارياته بالأخضر، بينما الأيام المستقبلية تظهر كمجدولة قيد الانتظار
+                </span>
+              </div>
             </div>
           </div>
 
