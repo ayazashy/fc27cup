@@ -331,14 +331,14 @@ export default function TvDisplayTab({
                           key={m.id}
                           style={{
                             padding: '8px 10px',
-                            background: isCur ? '#ECFDF5' : (isNext ? '#FFFBEB' : (isDone ? '#F8FAFC' : '#FFFFFF')),
-                            border: `1px solid ${isCur ? '#059669' : (isNext ? '#FCD34D' : 'var(--border-light)')}`,
+                            background: isCur ? '#ECFDF5' : (isNext ? '#FEF9C3' : (isDone ? '#F1F5F9' : '#FFFFFF')),
+                            border: `1.5px solid ${isCur ? '#059669' : (isNext ? '#CA8A04' : (isDone ? '#CBD5E1' : 'var(--border-light)'))}`,
                             borderRadius: '6px',
                             fontSize: '0.8rem',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
-                            opacity: isDone ? 0.65 : 1
+                            opacity: isDone ? 0.7 : 1
                           }}
                         >
                           <div style={{ overflow: 'hidden' }}>
