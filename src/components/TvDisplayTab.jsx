@@ -336,7 +336,7 @@ export default function TvDisplayTab({
                       {nextP1?.name} ضد {nextP2?.name}
                     </div>
                     <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                              <b style={{ color: 'var(--ksu-green)', marginLeft: '4px' }}>[اليوم {m.dayNumber || 1}]</b>
+                              <b style={{ color: 'var(--ksu-green)', marginLeft: '4px' }}>[اليوم {next.dayNumber || 1}]</b>
                       مباراة #{next.matchNumber} {next.groupName} — جولة {next.roundNumber || 1}
                     </div>
                   </div>

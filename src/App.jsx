@@ -12,6 +12,7 @@ import {
   Users, 
   Shuffle, 
   Calendar, 
+  CalendarDays, 
   Trophy, 
   Tv, 
   BarChart3,
