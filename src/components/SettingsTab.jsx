@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings, Check, Award, Shield, Monitor, Cloud, Copy, CheckCheck, AlertCircle } from 'lucide-react';
+import { Settings, Check, Award, Shield, Monitor, Cloud, Copy, CheckCheck, AlertCircle, Clock } from 'lucide-react';
 
 export default function SettingsTab({ 
   config, 
@@ -174,6 +174,56 @@ service cloud.firestore {
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                 يتم توزيع وإسناد المباريات على هذه الأجهزة لمتابعة الصالة لحظة بلحظة
               </span>
+            </div>
+          </div>
+
+          <hr style={{ border: 'none', borderTop: '1px solid var(--border-light)' }} />
+
+          {/* Section: Match Duration & Estimated Times */}
+          <div>
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Clock size={18} color="var(--ksu-green)" />
+              حساب أوقات الانتظار والموعد المتوقع للمباريات
+            </h3>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '8px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }}>
+                  الحد الأدنى لمدة المباراة (بالدقائق):
+                </label>
+                <input 
+                  type="number"
+                  min="5"
+                  max="30"
+                  className="form-input numeric"
+                  value={config.minMatchDuration || 10}
+                  onChange={(e) => handleChange('minMatchDuration', Number(e.target.value))}
+                />
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  المدة المتوقعة في حال انتهاء الشوطين دون تمديد (افتراضي: 10 دقائق)
+                </span>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }}>
+                  الحد الأقصى لمدة المباراة (بالدقائق):
+                </label>
+                <input 
+                  type="number"
+                  min="8"
+                  max="45"
+                  className="form-input numeric"
+                  value={config.maxMatchDuration || 15}
+                  onChange={(e) => handleChange('maxMatchDuration', Number(e.target.value))}
+                />
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  يشمل وقت التبديلات والأشواط الإضافية أو ركلات الجزاء (افتراضي: 15 دقيقة)
+                </span>
+              </div>
+            </div>
+
+            <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '6px', padding: '10px 14px', fontSize: '0.8rem', color: '#166534' }}>
+              💡 <b>المعادلة الذكية للموعد التقديري:</b> يتم ضرب ترتيب المباراة في طابور الجهاز الحالي بالحد الأدنى والأقصى لمدة المباراة وإضافتهما إلى التوقيت الفعلي الآن، فيظهر للطالب التوقيت التقديري المتوقع لوصول دوره بتنسيق <code>hh:mm - hh:mm</code> على الشاشة وهاتفه.
             </div>
           </div>
 

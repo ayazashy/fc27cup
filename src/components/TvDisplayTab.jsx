@@ -26,10 +26,19 @@ export default function TvDisplayTab({
     return map;
   }, [participants]);
 
+  const minDuration = Number(config.minMatchDuration) || 10;
+  const maxDuration = Number(config.maxMatchDuration) || 15;
+  const [timeTick, setTimeTick] = useState(Date.now());
+
+  useEffect(() => {
+    const tickInterval = setInterval(() => setTimeTick(Date.now()), 30000);
+    return () => clearInterval(tickInterval);
+  }, []);
+
   const consolesCount = Number(config.consolesCount) || 5;
   const consoleStatusMap = React.useMemo(() => {
-    return getConsoleStatusMap(matches, consolesCount);
-  }, [matches, consolesCount]);
+    return getConsoleStatusMap(matches, consolesCount, minDuration, maxDuration);
+  }, [matches, consolesCount, minDuration, maxDuration, timeTick]);
 
   // Auto-rotate tabs for projector display (18 seconds per tab)
   useEffect(() => {
@@ -74,14 +83,19 @@ export default function TvDisplayTab({
     const nextMatch = playerMatches.find(m => m.status !== 'completed' && m.status !== 'walkover');
     const pastMatches = playerMatches.filter(m => m.status === 'completed' || m.status === 'walkover');
 
+    const nextMatchWithEst = nextMatch 
+      ? (consoleStatusMap[nextMatch.consoleId]?.matches?.find(m => m.id === nextMatch.id) || nextMatch)
+      : null;
+
     return {
       found: true,
       player: foundPlayer,
       nextMatch,
+      nextMatchWithEst,
       totalMatches: playerMatches.length,
       pastMatches
     };
-  }, [playerSearch, participants, matches]);
+  }, [playerSearch, participants, matches, consoleStatusMap]);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -215,9 +229,17 @@ export default function TvDisplayTab({
                   أهلاً {searchResult.player.name} ({searchResult.player.team}):
                 </span>
                 {searchResult.nextMatch ? (
-                  <span style={{ color: '#065F46', marginRight: '6px', fontWeight: 600 }}>
-                    مباراتك القادمة ضد <b>{participantsMap[searchResult.nextMatch.player1Id === searchResult.player.id ? searchResult.nextMatch.player2Id : searchResult.nextMatch.player1Id]?.name}</b> على <b>[جهاز {searchResult.nextMatch.consoleId}]</b> — (ترتيب المباراة: #{searchResult.nextMatch.matchNumber} {searchResult.nextMatch.groupName})!
-                  </span>
+                  <div>
+                    <span style={{ color: '#065F46', marginRight: '6px', fontWeight: 600 }}>
+                      مباراتك القادمة ضد <b>{participantsMap[searchResult.nextMatch.player1Id === searchResult.player.id ? searchResult.nextMatch.player2Id : searchResult.nextMatch.player1Id]?.name}</b> على <b>[جهاز {searchResult.nextMatch.consoleId}]</b> — (ترتيب المباراة: #{searchResult.nextMatch.matchNumber} {searchResult.nextMatch.groupName})!
+                    </span>
+                    {searchResult.nextMatchWithEst?.estimatedTime && (
+                      <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', background: '#ECFDF5', border: '1.5px solid #10B981', padding: '6px 12px', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 800, color: '#065F46' }}>
+                        <Clock size={16} color="#059669" />
+                        <span>الوقت المتوقع لبدء مباراتك بالصالة: ({searchResult.nextMatchWithEst.estimatedTime.rangeStr}) تقريباً</span>
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <span style={{ color: 'var(--text-muted)', marginRight: '6px' }}>
                     لقد أكملت جميع مبارياتك المقررة حالياً ✓
@@ -300,8 +322,15 @@ export default function TvDisplayTab({
                 {/* NEXT MATCH (التالي للاستعداد) */}
                 {next && (
                   <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: '8px', padding: '10px 12px' }}>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#92400E', marginBottom: '4px' }}>
-                      🟡 التالي للاستعداد في القاعة:
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#92400E' }}>
+                        🟡 التالي للاستعداد في القاعة:
+                      </div>
+                      {next.estimatedTime && (
+                        <span className="badge badge-gold numeric" style={{ fontSize: '0.72rem', fontWeight: 800 }}>
+                          🕒 {next.estimatedTime.rangeStr}
+                        </span>
+                      )}
                     </div>
                     <div style={{ fontWeight: 800, fontSize: '0.88rem' }}>
                       {nextP1?.name} ضد {nextP2?.name}
@@ -353,7 +382,24 @@ export default function TvDisplayTab({
                             </div>
                           </div>
 
-                          <div style={{ flexShrink: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                            {m.estimatedTime && !isDone && !isCur && (
+                              <span 
+                                className="numeric"
+                                style={{
+                                  fontSize: '0.72rem',
+                                  color: '#475569',
+                                  background: '#F8FAFC',
+                                  border: '1px solid #E2E8F0',
+                                  padding: '2px 6px',
+                                  borderRadius: '4px',
+                                  fontWeight: 700
+                                }}
+                                title="الوقت التقديري المتوقع لبدء المباراة (hh:mm - hh:mm)"
+                              >
+                                🕒 {m.estimatedTime.rangeStr}
+                              </span>
+                            )}
                             {isDone ? (
                               <span className="numeric" style={{ fontWeight: 800, color: '#059669', fontSize: '0.85rem' }}>
                                 {m.score1} : {m.score2} ✓

@@ -35,6 +35,8 @@ const DEFAULT_CONFIG = {
   pointsDraw: 1,
   pointsLoss: 0,
   consolesCount: 5,
+  minMatchDuration: 10,
+  maxMatchDuration: 15,
   forfeitScoreWinner: 3,
   forfeitScoreLoser: 0
 };

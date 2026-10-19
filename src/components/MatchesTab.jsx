@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Monitor, Search, Filter, Play, Pause, RotateCcw, Clock, CheckCircle2, AlertCircle, ArrowRight, Check } from 'lucide-react';
+import { Calendar, Monitor, Search, Filter, Play, Pause, RotateCcw, Clock, CheckCircle2, AlertCircle, ArrowRight, Check, Scale } from 'lucide-react';
 import ScoreModal from './ScoreModal';
-import { getConsoleStatusMap } from '../utils/tournamentEngine';
+import { getConsoleStatusMap, rebalanceRemainingMatches } from '../utils/tournamentEngine';
 
 export default function MatchesTab({ 
   matches, 
@@ -44,10 +44,19 @@ export default function MatchesTab({
     return map;
   }, [participants]);
 
+  const minDuration = Number(config.minMatchDuration) || 10;
+  const maxDuration = Number(config.maxMatchDuration) || 15;
+  const [timeTick, setTimeTick] = useState(Date.now());
+
+  useEffect(() => {
+    const tickInterval = setInterval(() => setTimeTick(Date.now()), 30000);
+    return () => clearInterval(tickInterval);
+  }, []);
+
   const consolesCount = Number(config.consolesCount) || 5;
   const consoleStatusMap = React.useMemo(() => {
-    return getConsoleStatusMap(matches, consolesCount);
-  }, [matches, consolesCount]);
+    return getConsoleStatusMap(matches, consolesCount, minDuration, maxDuration);
+  }, [matches, consolesCount, minDuration, maxDuration, timeTick]);
 
   // Set of all current match IDs across all consoles
   const currentMatchIds = React.useMemo(() => {
@@ -75,8 +84,17 @@ export default function MatchesTab({
   };
 
   const handleSaveScore = (updatedMatch) => {
-    setMatches(prev => prev.map(m => m.id === updatedMatch.id ? updatedMatch : m));
-    onNotify(`تم اعتماد نتيجة المباراة #${updatedMatch.matchNumber}! تم تلقائياً تصعيد المباراة التالية على جهاز ${updatedMatch.consoleId}`, 'success');
+    const updated = matches.map(m => m.id === updatedMatch.id ? updatedMatch : m);
+    // Dynamically balance queued matches across idle / lighter devices
+    const rebalanced = rebalanceRemainingMatches(updated, consolesCount);
+    setMatches(rebalanced);
+    onNotify(`تم اعتماد نتيجة المباراة #${updatedMatch.matchNumber}! تم تلقائياً موازنة طوابير الأجهزة وتحديث المواعيد التقديرية`, 'success');
+  };
+
+  const handleManualRebalance = () => {
+    const rebalanced = rebalanceRemainingMatches(matches, consolesCount);
+    setMatches(rebalanced);
+    onNotify('تمت إعادة موازنة طوابير المباريات بالتساوي على جميع أجهزة الصالة!', 'success');
   };
 
   const formatTimer = (secs) => {
@@ -166,8 +184,18 @@ export default function MatchesTab({
               {isTimerRunning ? 'إيقاف مؤقت' : 'بدء الشوط'}
             </button>
 
-            <button className="btn btn-secondary btn-sm" onClick={() => resetTimer()}>
+            <button className="btn btn-secondary btn-sm" onClick={() => resetTimer()} title="إعادة تعيين المؤقت">
               <RotateCcw size={14} />
+            </button>
+
+            <button 
+              className="btn btn-secondary btn-sm"
+              onClick={handleManualRebalance}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
+              title="موازنة المباريات المتبقية بالتساوي على جميع الأجهزة الشاغرة لمنع فراغ أي جهاز"
+            >
+              <Scale size={14} color="var(--ksu-green)" />
+              <span>موازنة طوابير الأجهزة</span>
             </button>
           </div>
 
@@ -308,6 +336,12 @@ export default function MatchesTab({
                     <div style={{ fontSize: '0.7rem', color: '#854D0E' }}>
                       {next.groupName} — جولة {next.roundNumber || 1}
                     </div>
+                    {next.estimatedTime && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#854D0E', marginTop: '6px', fontWeight: 700 }}>
+                        <Clock size={13} />
+                        <span>الوقت التقديري لبدء المباراة: {next.estimatedTime.rangeStr}</span>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -380,6 +414,23 @@ export default function MatchesTab({
                           </div>
 
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                            {m.estimatedTime && !isDone && !isCur && (
+                              <span 
+                                className="numeric"
+                                style={{
+                                  fontSize: '0.68rem',
+                                  color: '#475569',
+                                  background: '#F1F5F9',
+                                  border: '1px solid #E2E8F0',
+                                  padding: '2px 5px',
+                                  borderRadius: '4px',
+                                  fontWeight: 600
+                                }}
+                                title="الوقت التقديري المتوقع لبدء المباراة (hh:mm - hh:mm)"
+                              >
+                                🕒 {m.estimatedTime.rangeStr}
+                              </span>
+                            )}
                             {isDone ? (
                               <span className="numeric" style={{ fontWeight: 800, color: '#475569' }}>
                                 {m.score1} : {m.score2} ✓

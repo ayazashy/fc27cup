@@ -1,7 +1,7 @@
 /**
  * Tournament Engine for KSU Housing FC27 Cup
- * Handles Group Generation, Automated Device Distribution with Round-by-Round Fairness,
- * Standings Calculation, and Connected Knockout Trees.
+ * Handles Group Generation, Automated Device Distribution with Round Fairness,
+ * Dynamic Load Balancing, Estimated Match Time Calculations, and Connected Knockout Trees.
  */
 
 export const ARABIC_LETTERS = ['أ', 'ب', 'ج', 'د', 'هـ', 'و', 'ز', 'ح', 'ط', 'ي', 'ك', 'ل', 'م', 'ن', 'س', 'ع', 'ف', 'ص', 'ق', 'ر', 'ش', 'ت', 'ث', 'خ', 'ذ', 'ض', 'ظ', 'غ'];
@@ -19,9 +19,159 @@ export function shuffleArray(array) {
 }
 
 /**
- * Generate Groups and Automatically Schedule Matches across X Devices
- * Guarantees Round-by-Round fairness: ALL players play Round 1 before ANY player plays Round 2!
+ * Calculate Estimated Time Range for a queued match
+ * Formats: hh:mm - hh:mm
  */
+export function calculateEstimatedMatchTime(matchesAhead = 0, minDuration = 10, maxDuration = 15, baseDate = new Date()) {
+  if (matchesAhead <= 0) {
+    return {
+      isNow: true,
+      label: 'الآن (جارية)',
+      rangeStr: 'جارية الآن'
+    };
+  }
+
+  const waitMinMinutes = matchesAhead * minDuration;
+  const waitMaxMinutes = matchesAhead * maxDuration;
+
+  const minStartTime = new Date(baseDate.getTime() + waitMinMinutes * 60 * 1000);
+  const maxStartTime = new Date(baseDate.getTime() + waitMaxMinutes * 60 * 1000);
+
+  const formatTime = (d) => {
+    let hours = d.getHours();
+    const minutes = d.getMinutes().toString().padStart(2, '0');
+    const ampm = hours >= 12 ? 'م' : 'ص';
+    hours = hours % 12 || 12;
+    return `${hours}:${minutes} ${ampm}`;
+  };
+
+  const minStr = formatTime(minStartTime);
+  const maxStr = formatTime(maxStartTime);
+
+  return {
+    isNow: false,
+    matchesAhead,
+    waitMinMinutes,
+    waitMaxMinutes,
+    minStr,
+    maxStr,
+    rangeStr: `${minStr} - ${maxStr}`
+  };
+}
+
+/**
+ * Dynamic Load Balancing Across Consoles
+ * If a device has finished all its matches or has significantly fewer queued matches,
+ * it takes over remaining queued matches from overloaded devices so workload is equalized!
+ */
+/**
+ * Dynamic Load Balancing Across Consoles
+ * If a device has finished all its matches or has significantly fewer queued matches,
+ * it takes over remaining queued matches from overloaded devices so workload is equalized!
+ */
+export function rebalanceRemainingMatches(matches, consolesCount = 5) {
+  const activeMatches = matches.map(m => ({ ...m }));
+
+  // Separate non-movable (completed, walkover, live) from movable (scheduled)
+  const lockedMatches = activeMatches.filter(
+    m => m.status === 'completed' || m.status === 'walkover' || m.status === 'live'
+  );
+  const queuedMatches = activeMatches.filter(m => m.status === 'scheduled');
+
+  if (queuedMatches.length === 0) return activeMatches;
+
+  // Track players currently active in a live match to avoid scheduling them simultaneously
+  const livePlayerIds = new Set();
+  lockedMatches.filter(m => m.status === 'live').forEach(m => {
+    if (m.player1Id) livePlayerIds.add(m.player1Id);
+    if (m.player2Id) livePlayerIds.add(m.player2Id);
+  });
+
+  // Track queue per console of remaining scheduled matches
+  const queues = {};
+  for (let c = 1; c <= consolesCount; c++) {
+    const hasLive = lockedMatches.some(m => m.consoleId === c && m.status === 'live');
+    queues[c] = {
+      consoleId: c,
+      hasLive,
+      matches: queuedMatches.filter(m => m.consoleId === c).sort((a, b) => (a.orderOnConsole || 0) - (b.orderOnConsole || 0))
+    };
+  }
+
+  // Iteratively balance queues: move from max queue to min queue if difference > 1
+  let balanced = false;
+  let iterations = 0;
+
+  while (!balanced && iterations < 150) {
+    iterations++;
+
+    // Calculate effective workload weight per console (live match counts as 1 in progress)
+    const queueWeights = Object.values(queues).map(q => ({
+      consoleId: q.consoleId,
+      weight: q.matches.length + (q.hasLive ? 1 : 0),
+      matchesCount: q.matches.length
+    }));
+
+    queueWeights.sort((a, b) => b.weight - a.weight);
+
+    const maxQueue = queueWeights[0];
+    const minQueue = queueWeights[queueWeights.length - 1];
+
+    if (maxQueue.weight - minQueue.weight > 1 && maxQueue.matchesCount > 0) {
+      const sourceMatches = queues[maxQueue.consoleId].matches;
+
+      // If minQueue has 0 matches and no live match (completely idle device):
+      // Pick earliest round match whose players are not active in a live match right now
+      let matchIdxToMove = -1;
+      if (queues[minQueue.consoleId].matches.length === 0 && !queues[minQueue.consoleId].hasLive) {
+        matchIdxToMove = sourceMatches.findIndex(
+          m => !livePlayerIds.has(m.player1Id) && !livePlayerIds.has(m.player2Id)
+        );
+      }
+
+      if (matchIdxToMove === -1) {
+        matchIdxToMove = sourceMatches.length - 1;
+      }
+
+      const [matchToMove] = sourceMatches.splice(matchIdxToMove, 1);
+      matchToMove.consoleId = minQueue.consoleId;
+      queues[minQueue.consoleId].matches.push(matchToMove);
+    } else {
+      balanced = true;
+    }
+  }
+
+  // Re-index orderOnConsole per console preserving round-by-round fairness
+  for (let c = 1; c <= consolesCount; c++) {
+    const consoleLocked = lockedMatches
+      .filter(m => m.consoleId === c)
+      .sort((a, b) => (a.orderOnConsole || 0) - (b.orderOnConsole || 0));
+
+    let orderCounter = 1;
+    consoleLocked.forEach(m => { m.orderOnConsole = orderCounter++; });
+
+    const consoleQueued = queues[c].matches.sort((a, b) => {
+      if (a.roundNumber && b.roundNumber && a.roundNumber !== b.roundNumber) {
+        return a.roundNumber - b.roundNumber;
+      }
+      return (a.matchNumber || 0) - (b.matchNumber || 0);
+    });
+
+    consoleQueued.forEach(m => { m.orderOnConsole = orderCounter++; });
+  }
+
+  // Re-combine all matches
+  const allRebalanced = [];
+  for (let c = 1; c <= consolesCount; c++) {
+    const cLocked = lockedMatches.filter(m => m.consoleId === c);
+    const cQueued = queues[c].matches;
+    allRebalanced.push(...cLocked, ...cQueued);
+  }
+
+  const otherMatches = activeMatches.filter(m => !m.consoleId);
+  return [...allRebalanced, ...otherMatches].sort((a, b) => (a.matchNumber || 0) - (b.matchNumber || 0));
+}
+
 export function generateGroupsAndMatches(participants, config) {
   const playersPerGroup = Number(config.playersPerGroup) || 4;
   const consolesCount = Number(config.consolesCount) || 5;
@@ -31,7 +181,6 @@ export function generateGroupsAndMatches(participants, config) {
     return { groups: [], matches: [] };
   }
 
-  // Shuffle players randomly
   const shuffled = shuffleArray(activePlayers);
   const numGroups = Math.ceil(shuffled.length / playersPerGroup);
 
@@ -47,17 +196,11 @@ export function generateGroupsAndMatches(participants, config) {
     });
   }
 
-  // Distribute players round-robin into groups
   shuffled.forEach((player, idx) => {
     const groupIdx = idx % numGroups;
     groups[groupIdx].playerIds.push(player.id);
   });
 
-  // Generate matches grouped by Round Number for each group
-  // For standard 4 players [0, 1, 2, 3]:
-  // Round 1: (0 vs 1), (2 vs 3)
-  // Round 2: (0 vs 2), (1 vs 3)
-  // Round 3: (0 vs 3), (1 vs 2)
   const roundMatches = {
     round1: [],
     round2: [],
@@ -70,7 +213,6 @@ export function generateGroupsAndMatches(participants, config) {
     const n = pIds.length;
 
     if (n === 4) {
-      // Clean 3 rounds
       roundMatches.round1.push(
         { grp, p1: pIds[0], p2: pIds[1], roundNum: 1 },
         { grp, p1: pIds[2], p2: pIds[3], roundNum: 1 }
@@ -84,7 +226,6 @@ export function generateGroupsAndMatches(participants, config) {
         { grp, p1: pIds[1], p2: pIds[2], roundNum: 3 }
       );
     } else {
-      // General round robin for non-4 player groups
       let localRound = 1;
       for (let i = 0; i < n; i++) {
         for (let j = i + 1; j < n; j++) {
@@ -96,7 +237,6 @@ export function generateGroupsAndMatches(participants, config) {
     }
   });
 
-  // Ordered list of all matches: Round 1 first, then Round 2, then Round 3!
   const orderedList = [
     ...roundMatches.round1,
     ...roundMatches.round2,
@@ -104,8 +244,6 @@ export function generateGroupsAndMatches(participants, config) {
     ...roundMatches.overflow
   ];
 
-  // Distribute sequentially across Consoles (1 to consolesCount)
-  // Tracking queue order per console
   const consoleQueueCounters = {};
   for (let c = 1; c <= consolesCount; c++) {
     consoleQueueCounters[c] = 0;
@@ -136,7 +274,6 @@ export function generateGroupsAndMatches(participants, config) {
       penalty2: null,
       consoleId: assignedConsole,
       orderOnConsole: orderOnConsole,
-      // First match on each console starts as scheduled
       status: 'scheduled',
       walkoverWinnerId: null,
       winnerId: null,
@@ -149,21 +286,22 @@ export function generateGroupsAndMatches(participants, config) {
 }
 
 /**
- * Automatically determine the Current (Now) and Next match on each console
+ * Automatically determine the Current (Now) and Next match on each console,
+ * with queue positions and estimated start times
  */
-export function getConsoleStatusMap(matches, consolesCount = 5) {
+export function getConsoleStatusMap(matches, consolesCount = 5, minDuration = 10, maxDuration = 15) {
   const map = {};
+  const now = new Date();
+
   for (let c = 1; c <= consolesCount; c++) {
     const consoleMatches = matches
       .filter(m => m.consoleId === c)
       .sort((a, b) => (a.orderOnConsole || 0) - (b.orderOnConsole || 0));
 
-    // Current match: First in_progress / live match, or first non-completed match
     const liveMatch = consoleMatches.find(m => m.status === 'live');
     const firstUnfinished = consoleMatches.find(m => m.status !== 'completed' && m.status !== 'walkover');
     const current = liveMatch || firstUnfinished || null;
 
-    // Next match: The one immediately after current that is not completed
     let nextMatch = null;
     if (current) {
       const remaining = consoleMatches.filter(
@@ -172,21 +310,65 @@ export function getConsoleStatusMap(matches, consolesCount = 5) {
       nextMatch = remaining[0] || null;
     }
 
+    // Attach estimated times to all unfinished matches on this console
+    let queueAheadCounter = (current && current.status === 'live') ? 1 : 0;
+
+    const enrichedMatches = consoleMatches.map(m => {
+      const isDone = m.status === 'completed' || m.status === 'walkover';
+      const isCur = current && current.id === m.id;
+
+      if (isDone) {
+        return { ...m, estimatedTime: null };
+      }
+
+      if (isCur && m.status === 'live') {
+        return {
+          ...m,
+          estimatedTime: { isNow: true, label: 'الآن (جارية بالصالة)', rangeStr: 'جارية الآن' }
+        };
+      }
+
+      if (isCur && m.status !== 'live') {
+        return {
+          ...m,
+          estimatedTime: {
+            isNow: true,
+            matchesAhead: 0,
+            label: 'جاهزة للبدء الآن',
+            rangeStr: 'جاهزة للبدء الآن'
+          }
+        };
+      }
+
+      // Queued match ahead
+      const matchesAhead = queueAheadCounter++;
+      const est = calculateEstimatedMatchTime(matchesAhead, minDuration, maxDuration, now);
+      return {
+        ...m,
+        estimatedTime: est
+      };
+    });
+
+    const enrichedCurrent = enrichedMatches.find(m => current && m.id === current.id) || null;
+    const enrichedNext = enrichedMatches.find(m => nextMatch && m.id === nextMatch.id) || null;
+
+    const completedCount = consoleMatches.filter(m => m.status === 'completed' || m.status === 'walkover').length;
+    const queuedCount = consoleMatches.filter(m => m.status === 'scheduled').length;
+
     map[c] = {
       consoleId: c,
-      matches: consoleMatches,
-      currentMatch: current,
-      nextMatch: nextMatch,
-      completedCount: consoleMatches.filter(m => m.status === 'completed' || m.status === 'walkover').length,
-      totalCount: consoleMatches.length
+      matches: enrichedMatches,
+      currentMatch: enrichedCurrent,
+      nextMatch: enrichedNext,
+      completedCount,
+      queuedCount,
+      totalCount: consoleMatches.length,
+      isFinished: completedCount === consoleMatches.length && consoleMatches.length > 0
     };
   }
   return map;
 }
 
-/**
- * Calculate dynamic standings for a group
- */
 export function calculateGroupStandings(group, allMatches, participantsMap, config) {
   const pointsWin = Number(config.pointsWin ?? 3);
   const pointsDraw = Number(config.pointsDraw ?? 1);
@@ -332,14 +514,12 @@ export function generateKnockoutTree(groups, allMatches, participantsMap, config
     return { bracketMatches: [], roundsConfig: [] };
   }
 
-  // Calculate bracket power of 2 size
   let bracketSize = 2;
   while (bracketSize < qualifiers.length) {
     bracketSize *= 2;
   }
   bracketSize = Math.min(bracketSize, 64);
 
-  // Cross-seeding: Group 1st places vs Group 2nd places
   const firsts = qualifiers.filter(q => q.rank === 1);
   const seconds = qualifiers.filter(q => q.rank === 2);
   const round1Pairings = [];
@@ -350,7 +530,6 @@ export function generateKnockoutTree(groups, allMatches, participantsMap, config
     round1Pairings.push({ p1, p2 });
   }
 
-  // Round Names hierarchy
   const roundDefs = [
     { size: 64, key: 'r64', title: 'دور الـ 64' },
     { size: 32, key: 'r32', title: 'دور الـ 32' },
@@ -360,12 +539,10 @@ export function generateKnockoutTree(groups, allMatches, participantsMap, config
     { size: 2, key: 'final', title: 'المباراة النهائية 🏆' }
   ];
 
-  // Filter rounds relevant to this bracket size
   const activeRounds = roundDefs.filter(r => r.size <= bracketSize);
   const bracketMatches = [];
   let matchNumberCounter = 200;
 
-  // Generate matches for each round and link child to parent
   let previousRoundMatches = [];
 
   activeRounds.forEach((rDef, rIdx) => {
@@ -378,7 +555,6 @@ export function generateKnockoutTree(groups, allMatches, participantsMap, config
       let p2 = null;
 
       if (rIdx === 0) {
-        // First round gets direct qualifiers
         const pair = round1Pairings[m] || { p1: null, p2: null };
         p1 = pair.p1;
         p2 = pair.p2;
@@ -403,18 +579,17 @@ export function generateKnockoutTree(groups, allMatches, participantsMap, config
         walkoverWinnerId: null,
         winnerId: null,
         nextMatchId: null,
-        nextMatchSlot: null // 1 or 2
+        nextMatchSlot: null
       };
 
       currentRoundMatches.push(matchObj);
       bracketMatches.push(matchObj);
     }
 
-    // Link previous round to current round
     if (previousRoundMatches.length > 0) {
       previousRoundMatches.forEach((prevMatch, pIdx) => {
         const targetParentIdx = Math.floor(pIdx / 2);
-        const targetSlot = (pIdx % 2) + 1; // 1 or 2
+        const targetSlot = (pIdx % 2) + 1;
         const parentMatch = currentRoundMatches[targetParentIdx];
         if (parentMatch) {
           prevMatch.nextMatchId = parentMatch.id;
