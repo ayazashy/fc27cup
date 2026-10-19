@@ -7,6 +7,7 @@ import KnockoutTab from './components/KnockoutTab';
 import TvDisplayTab from './components/TvDisplayTab';
 import StatisticsTab from './components/StatisticsTab';
 import SettingsTab from './components/SettingsTab';
+import ScheduleDaysTab from './components/ScheduleDaysTab';
 import { 
   Users, 
   Shuffle, 
@@ -35,6 +36,7 @@ const DEFAULT_CONFIG = {
   pointsDraw: 1,
   pointsLoss: 0,
   consolesCount: 5,
+  tournamentDays: 2,
   minMatchDuration: 10,
   maxMatchDuration: 15,
   forfeitScoreWinner: 3,
@@ -279,6 +281,14 @@ export default function App() {
           </button>
 
           <button 
+            className={`tab-btn ${activeTab === 'days' ? 'active' : ''}`}
+            onClick={() => setActiveTab('days')}
+          >
+            <CalendarDays size={18} />
+            <span>جدولة الأيام (X Days)</span>
+          </button>
+
+          <button 
             className={`tab-btn ${activeTab === 'knockout' ? 'active' : ''}`}
             onClick={() => setActiveTab('knockout')}
           >
@@ -340,6 +350,18 @@ export default function App() {
             setMatches={setMatches}
             participants={participants}
             config={config}
+            onNotify={showNotification}
+          />
+        )}
+
+        {activeTab === 'days' && (
+          <ScheduleDaysTab
+            matches={matches}
+            setMatches={setMatches}
+            participants={participants}
+            groups={groups}
+            config={config}
+            setConfig={setConfig}
             onNotify={showNotification}
           />
         )}

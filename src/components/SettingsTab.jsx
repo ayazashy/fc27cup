@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings, Check, Award, Shield, Monitor, Cloud, Copy, CheckCheck, AlertCircle, Clock } from 'lucide-react';
+import { Settings, Check, Award, Shield, Monitor, Cloud, Copy, CheckCheck, AlertCircle, Clock, CalendarDays } from 'lucide-react';
 
 export default function SettingsTab({ 
   config, 
@@ -174,6 +174,37 @@ service cloud.firestore {
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                 يتم توزيع وإسناد المباريات على هذه الأجهزة لمتابعة الصالة لحظة بلحظة
               </span>
+            </div>
+          </div>
+
+          <hr style={{ border: 'none', borderTop: '1px solid var(--border-light)' }} />
+
+          {/* Section: Tournament Days Splitting */}
+          <div>
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <CalendarDays size={18} color="var(--ksu-green)" />
+              جدولة وتقسيم أيام البطولة (X Days)
+            </h3>
+
+            <div style={{ marginBottom: '8px' }}>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }}>
+                عدد أيام إقامة البطولة:
+              </label>
+              <select 
+                className="form-select"
+                value={config.tournamentDays || 2}
+                onChange={(e) => handleChange('tournamentDays', Number(e.target.value))}
+              >
+                <option value={1}>يوم واحد (بطولة اليوم الواحد المكثفة)</option>
+                <option value={2}>يومان (نظام التناظر العكسي الذكي - الموصى به)</option>
+                <option value={3}>3 أيام (جولة كاملة في كل يوم)</option>
+                <option value={4}>4 أيام (3 أيام دور مجموعات + يوم نهائي إقصائيات)</option>
+                <option value={5}>5 أيام (موزعة على مدار الأسبوع)</option>
+              </select>
+            </div>
+
+            <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '6px', padding: '10px 14px', fontSize: '0.8rem', color: '#166534' }}>
+              💡 <b>مبدأ التناظر العكسي العادل (في نظام اليومين):</b> يقسم النظام المباريات بحيث يلعب 50% من الطلاب مباراتين باليوم الأول ومباراة باليوم الثاني، والـ 50% الآخرون العكس تماماً، ليصبح مجموع مباريات كل لاعب 3 مباريات بنهاية دور المجموعات بالتساوي التام.
             </div>
           </div>
 

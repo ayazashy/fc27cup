@@ -15,6 +15,7 @@ export default function MatchesTab({
   const [stageFilter, setStageFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [consoleFilter, setConsoleFilter] = useState('all');
+  const [dayFilter, setDayFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Built-in Hall Match Timer
@@ -108,6 +109,7 @@ export default function MatchesTab({
     if (stageFilter === 'knockout' && m.stage === 'group') return false;
     if (statusFilter !== 'all' && m.status !== statusFilter) return false;
     if (consoleFilter !== 'all' && String(m.consoleId) !== String(consoleFilter)) return false;
+    if (dayFilter !== 'all' && String(m.dayNumber || 1) !== String(dayFilter)) return false;
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -199,8 +201,29 @@ export default function MatchesTab({
             </button>
           </div>
 
-          {/* View Mode Toggle: Consoles Queue Board vs All Matches List */}
-          <div style={{ display: 'flex', background: 'var(--bg-subtle)', padding: '3px', borderRadius: '8px' }}>
+          {/* Day Filter & View Mode */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', background: 'var(--bg-subtle)', padding: '3px', borderRadius: '8px' }}>
+              <button 
+                className={`btn btn-sm ${dayFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ padding: '4px 10px', border: 'none', fontSize: '0.8rem' }}
+                onClick={() => setDayFilter('all')}
+              >
+                كل الأيام
+              </button>
+              {Array.from({ length: Number(config.tournamentDays) || 2 }, (_, i) => i + 1).map(d => (
+                <button 
+                  key={d}
+                  className={`btn btn-sm ${dayFilter === String(d) ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '4px 10px', border: 'none', fontSize: '0.8rem' }}
+                  onClick={() => setDayFilter(String(d))}
+                >
+                  اليوم {d}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', background: 'var(--bg-subtle)', padding: '3px', borderRadius: '8px' }}>
             <button 
               className={`btn btn-sm ${viewMode === 'consoles' ? 'btn-primary' : 'btn-secondary'}`}
               style={{ padding: '5px 14px', border: 'none' }}
@@ -220,6 +243,7 @@ export default function MatchesTab({
           </div>
         </div>
       </div>
+    </div>
 
       {/* VIEW 1: Automated Consoles Queue Board */}
       {viewMode === 'consoles' && (
@@ -409,7 +433,7 @@ export default function MatchesTab({
                               {mp1?.name} ضد {mp2?.name}
                             </span>
                             <span style={{ fontSize: '0.68rem', color: isDone ? '#94A3B8' : 'var(--text-muted)', display: 'block' }}>
-                              {m.groupName} (جولة {m.roundNumber || 1})
+                              {m.groupName} (جولة {m.roundNumber || 1}) • <b style={{ color: '#047857' }}>اليوم {m.dayNumber || 1}</b>
                             </span>
                           </div>
 
@@ -497,7 +521,7 @@ export default function MatchesTab({
               >
                 <div className="match-top-bar">
                   <span style={{ fontWeight: 800, color: isCurrent ? '#065F46' : 'var(--text-main)' }}>
-                    مباراة #{match.matchNumber} {match.groupName ? `— ${match.groupName}` : ''}
+                    مباراة #{match.matchNumber} {match.groupName ? `— ${match.groupName}` : ''} • <span style={{ color: '#047857' }}>اليوم {match.dayNumber || 1}</span>
                   </span>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>

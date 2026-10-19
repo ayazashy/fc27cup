@@ -282,7 +282,11 @@ export function generateGroupsAndMatches(participants, config) {
     });
   });
 
-  return { groups, matches };
+    // Automatically split matches into days based on configured tournament days (default: 2)
+  const initialDays = Number(config.tournamentDays) || 2;
+  const matchesWithDays = splitMatchesIntoDays(matches, activePlayers, initialDays);
+
+  return { groups, matches: matchesWithDays };
 }
 
 /**
@@ -624,4 +628,185 @@ export function propagateWinnerInTree(matches, updatedMatch) {
     }
     return m;
   });
+}
+
+
+/**
+ * Split Tournament Matches into X Days with Reverse Symmetry Fairness
+ * 
+ * Circle Definition:
+ * In a round-robin group of p players, a "Circle" (دورة كاملة / جولة) is when all players play at least once.
+ * Total circles = p - 1. (e.g. for p = 4, there are 3 circles).
+ * 
+ * 2-Day Split Principle (Reverse Symmetry):
+ * - Day 1: Half of the participants play twice, and the other half play once.
+ * - Day 2: The reverse! Players who played once on Day 1 play twice, and players who played twice on Day 1 play once.
+ * At the end of Day 2, all players have completed exactly the same total matches (p - 1).
+ */
+export function splitMatchesIntoDays(matches, participants = [], daysCount = 2) {
+  const dCount = Math.max(1, Number(daysCount) || 2);
+  const groupMatches = matches.filter(m => m.stage === 'group' || m.groupId);
+  const koMatches = matches.filter(m => m.stage !== 'group' && !m.groupId);
+
+  const circles = {};
+  groupMatches.forEach(m => {
+    const r = m.roundNumber || 1;
+    if (!circles[r]) circles[r] = [];
+    circles[r].push(m);
+  });
+
+  const matchDayMap = {};
+
+  if (dCount === 1) {
+    matches.forEach(m => { matchDayMap[m.id] = 1; });
+  } else if (dCount === 2) {
+    // 1. Circle 1 goes to Day 1
+    (circles[1] || []).forEach(m => { matchDayMap[m.id] = 1; });
+
+    // 2. Circle 2 is split in half per group to achieve exact reverse symmetry:
+    // In each group: match 1 goes to Day 1, match 2 goes to Day 2
+    const groupCircle2Counter = {};
+    (circles[2] || []).forEach(m => {
+      const gid = m.groupId || 'default';
+      groupCircle2Counter[gid] = (groupCircle2Counter[gid] || 0) + 1;
+      if (groupCircle2Counter[gid] % 2 === 1) {
+        matchDayMap[m.id] = 1;
+      } else {
+        matchDayMap[m.id] = 2;
+      }
+    });
+
+    // 3. Circle 3 goes to Day 2
+    (circles[3] || []).forEach(m => { matchDayMap[m.id] = 2; });
+
+    // Any extra circles (if p > 4):
+    Object.keys(circles).forEach(rStr => {
+      const r = Number(rStr);
+      if (r > 3) {
+        (circles[r] || []).forEach(m => { matchDayMap[m.id] = 2; });
+      }
+    });
+
+    // Knockout matches go to Day 2
+    koMatches.forEach(m => { matchDayMap[m.id] = 2; });
+  } else if (dCount === 3) {
+    (circles[1] || []).forEach(m => { matchDayMap[m.id] = 1; });
+    (circles[2] || []).forEach(m => { matchDayMap[m.id] = 2; });
+    (circles[3] || []).forEach(m => { matchDayMap[m.id] = 3; });
+    Object.keys(circles).forEach(rStr => {
+      const r = Number(rStr);
+      if (r > 3) {
+        (circles[r] || []).forEach(m => { matchDayMap[m.id] = 3; });
+      }
+    });
+    koMatches.forEach(m => { matchDayMap[m.id] = 3; });
+  } else if (dCount >= 4) {
+    (circles[1] || []).forEach(m => { matchDayMap[m.id] = 1; });
+    (circles[2] || []).forEach(m => { matchDayMap[m.id] = 2; });
+    (circles[3] || []).forEach(m => { matchDayMap[m.id] = 3; });
+    Object.keys(circles).forEach(rStr => {
+      const r = Number(rStr);
+      if (r > 3) {
+        (circles[r] || []).forEach(m => { matchDayMap[m.id] = 3; });
+      }
+    });
+
+    if (dCount === 4) {
+      koMatches.forEach(m => { matchDayMap[m.id] = 4; });
+    } else {
+      koMatches.forEach(m => {
+        if (m.stage === 'sf' || m.stage === 'final') {
+          matchDayMap[m.id] = dCount;
+        } else {
+          matchDayMap[m.id] = 4;
+        }
+      });
+    }
+  }
+
+  return matches.map(m => ({
+    ...m,
+    dayNumber: matchDayMap[m.id] || 1
+  }));
+}
+
+/**
+ * Calculate per-player match workload per day
+ */
+export function calculatePlayerDayWorkload(matches, participants = [], daysCount = 2) {
+  const dCount = Math.max(1, Number(daysCount) || 2);
+  const workloadMap = {};
+
+  participants.forEach(p => {
+    workloadMap[p.id] = {
+      playerId: p.id,
+      name: p.name || 'مشارك',
+      team: p.team || '—',
+      studentId: p.studentId || '',
+      room: p.room || '',
+      days: {},
+      totalMatches: 0,
+      isReverseBalanced: false
+    };
+    for (let d = 1; d <= dCount; d++) {
+      workloadMap[p.id].days[d] = 0;
+    }
+  });
+
+  matches.forEach(m => {
+    const d = m.dayNumber || 1;
+    if (m.player1Id && workloadMap[m.player1Id]) {
+      workloadMap[m.player1Id].days[d] = (workloadMap[m.player1Id].days[d] || 0) + 1;
+      workloadMap[m.player1Id].totalMatches += 1;
+    }
+    if (m.player2Id && workloadMap[m.player2Id]) {
+      workloadMap[m.player2Id].days[d] = (workloadMap[m.player2Id].days[d] || 0) + 1;
+      workloadMap[m.player2Id].totalMatches += 1;
+    }
+  });
+
+  Object.values(workloadMap).forEach(item => {
+    const d1 = item.days[1] || 0;
+    const d2 = item.days[2] || 0;
+    item.isReverseBalanced = (d1 === 2 && d2 === 1) || (d1 === 1 && d2 === 2);
+  });
+
+  return Object.values(workloadMap);
+}
+
+/**
+ * Get comprehensive breakdown statistics per day
+ */
+export function getDayBreakdownStats(matches, participants = [], daysCount = 2) {
+  const dCount = Math.max(1, Number(daysCount) || 2);
+  const workload = calculatePlayerDayWorkload(matches, participants, dCount);
+  const days = [];
+
+  for (let d = 1; d <= dCount; d++) {
+    const dayMatches = matches.filter(m => (m.dayNumber || 1) === d);
+    const completedCount = dayMatches.filter(m => m.status === 'completed' || m.status === 'walkover').length;
+    const playersPlayingTwice = workload.filter(w => (w.days[d] || 0) === 2).length;
+    const playersPlayingOnce = workload.filter(w => (w.days[d] || 0) === 1).length;
+    const playersPlayingZero = workload.filter(w => (w.days[d] || 0) === 0).length;
+
+    // Consoles distribution
+    const consoleCounts = {};
+    dayMatches.forEach(m => {
+      const c = m.consoleId || 1;
+      consoleCounts[c] = (consoleCounts[c] || 0) + 1;
+    });
+
+    days.push({
+      dayNumber: d,
+      matches: dayMatches,
+      matchesCount: dayMatches.length,
+      completedCount,
+      playersPlayingTwice,
+      playersPlayingOnce,
+      playersPlayingZero,
+      consoleCounts
+    });
+  }
+
+  return days;
 }

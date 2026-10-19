@@ -231,7 +231,7 @@ export default function TvDisplayTab({
                 {searchResult.nextMatch ? (
                   <div>
                     <span style={{ color: '#065F46', marginRight: '6px', fontWeight: 600 }}>
-                      مباراتك القادمة ضد <b>{participantsMap[searchResult.nextMatch.player1Id === searchResult.player.id ? searchResult.nextMatch.player2Id : searchResult.nextMatch.player1Id]?.name}</b> على <b>[جهاز {searchResult.nextMatch.consoleId}]</b> — (ترتيب المباراة: #{searchResult.nextMatch.matchNumber} {searchResult.nextMatch.groupName})!
+                      مباراتك القادمة ضد <b>{participantsMap[searchResult.nextMatch.player1Id === searchResult.player.id ? searchResult.nextMatch.player2Id : searchResult.nextMatch.player1Id]?.name}</b> على <b>[جهاز {searchResult.nextMatch.consoleId}]</b> — [اليوم #{searchResult.nextMatch.dayNumber || 1}] (ترتيب المباراة: #{searchResult.nextMatch.matchNumber} {searchResult.nextMatch.groupName})!
                     </span>
                     {searchResult.nextMatchWithEst?.estimatedTime && (
                       <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', background: '#ECFDF5', border: '1.5px solid #10B981', padding: '6px 12px', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 800, color: '#065F46' }}>
@@ -336,6 +336,7 @@ export default function TvDisplayTab({
                       {nextP1?.name} ضد {nextP2?.name}
                     </div>
                     <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                              <b style={{ color: 'var(--ksu-green)', marginLeft: '4px' }}>[اليوم {m.dayNumber || 1}]</b>
                       مباراة #{next.matchNumber} {next.groupName} — جولة {next.roundNumber || 1}
                     </div>
                   </div>
