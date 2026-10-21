@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Shuffle, RefreshCw, Trophy, Shield, Printer, CheckCircle, ArrowLeftRight, X } from 'lucide-react';
+import { Shuffle, RefreshCw, Trophy, Shield, Printer, CheckCircle, ArrowLeftRight, X, UserPlus } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { generateGroupsAndMatches, calculateGroupStandings } from '../utils/tournamentEngine';
+import { generateGroupsAndMatches, calculateGroupStandings, fillIncompleteGroupsAndAddMatches } from '../utils/tournamentEngine';
 
 export default function GroupsTab({ 
   groups, 
@@ -48,6 +48,22 @@ export default function GroupsTab({
     } catch (e) {}
 
     onNotify(`تم بنجاح إجراء القرعة وتوزيع ${confirmedPlayers.length} مشارك على ${newGroups.length} مجموعات!`, 'success');
+  };
+
+  const handleFillIncompleteGroups = () => {
+    if (groups.length === 0) {
+      onNotify('يرجى إجراء القرعة الأساسية أولاً قبل ملء المجموعات الشاغرة', 'error');
+      return;
+    }
+    const result = fillIncompleteGroupsAndAddMatches(groups, matches, participants, config);
+    if (!result.success) {
+      onNotify(result.message, 'info');
+      return;
+    }
+
+    setGroups(result.groups);
+    setMatches(result.matches);
+    onNotify(`تم بنجاح إضافة ${result.addedCount} لاعب إلى المجموعات الشاغرة وتوليد ${result.newMatchesCount} مباراة جديدة دون المساس بالنتائج القائمة! ✨`, 'success');
   };
 
   const handleSwapPlayers = () => {
@@ -113,13 +129,22 @@ export default function GroupsTab({
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
             <button className="btn btn-primary" onClick={handlePerformDraw}>
               <Shuffle size={18} />
               {groups.length === 0 ? 'إجراء القرعة العشوائية' : 'إعادة توزيع القرعة'}
             </button>
             {groups.length > 0 && (
               <>
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={handleFillIncompleteGroups}
+                  style={{ color: '#065F46', background: '#F0FDF4', borderColor: '#A7F3D0', fontWeight: 700 }}
+                  title="إلحاق المشاركين الجدد بالمجموعات التي لم تكتمل (أقل من 4 لاعبين) دون إعادة القرعة ودون مساس بالنتائج القائمة"
+                >
+                  <UserPlus size={16} />
+                  <span>إضافة الجدد للمجموعات دون إعادة قرعة</span>
+                </button>
                 <button className="btn btn-secondary btn-sm" onClick={() => setShowSwapModal(true)}>
                   <ArrowLeftRight size={16} />
                   تبديل يدوي بين لاعبين

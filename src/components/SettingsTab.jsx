@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Settings, Check, Award, Shield, Monitor, Cloud, Copy, CheckCheck, AlertCircle, Clock, CalendarDays } from 'lucide-react';
+import { computeCoordHash } from '../utils/securityGate';
 
 export default function SettingsTab({ 
   config, 
@@ -230,6 +231,24 @@ service cloud.firestore {
                       }));
                     }}
                   />
+                  <div style={{ marginTop: '6px' }}>
+                    <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '2px' }}>
+                      وقت انطلاق مباريات اليوم 1:
+                    </label>
+                    <input
+                      type="time"
+                      className="form-input numeric"
+                      style={{ padding: '4px 8px', fontSize: '0.8rem' }}
+                      value={config.dayStartTimes?.[1] || '18:00'}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setConfig(prev => ({
+                          ...prev,
+                          dayStartTimes: { ...(prev.dayStartTimes || {}), 1: val }
+                        }));
+                      }}
+                    />
+                  </div>
                 </div>
 
                 <div>
@@ -248,6 +267,24 @@ service cloud.firestore {
                       }));
                     }}
                   />
+                  <div style={{ marginTop: '6px' }}>
+                    <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '2px' }}>
+                      وقت انطلاق مباريات اليوم 2:
+                    </label>
+                    <input
+                      type="time"
+                      className="form-input numeric"
+                      style={{ padding: '4px 8px', fontSize: '0.8rem' }}
+                      value={config.dayStartTimes?.[2] || '18:00'}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setConfig(prev => ({
+                          ...prev,
+                          dayStartTimes: { ...(prev.dayStartTimes || {}), 2: val }
+                        }));
+                      }}
+                    />
+                  </div>
                 </div>
 
                 <div>
@@ -266,6 +303,24 @@ service cloud.firestore {
                       }));
                     }}
                   />
+                  <div style={{ marginTop: '6px' }}>
+                    <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '2px' }}>
+                      وقت انطلاق الإقصائيات:
+                    </label>
+                    <input
+                      type="time"
+                      className="form-input numeric"
+                      style={{ padding: '4px 8px', fontSize: '0.8rem' }}
+                      value={config.dayStartTimes?.knockout || '17:00'}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setConfig(prev => ({
+                          ...prev,
+                          dayStartTimes: { ...(prev.dayStartTimes || {}), knockout: val }
+                        }));
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -338,9 +393,39 @@ service cloud.firestore {
                 </span>
               </div>
             </div>
+          </div>
 
-            <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '6px', padding: '10px 14px', fontSize: '0.8rem', color: '#166534' }}>
-              💡 <b>المعادلة الذكية للموعد التقديري:</b> يتم ضرب ترتيب المباراة في طابور الجهاز الحالي بالحد الأدنى والأقصى لمدة المباراة وإضافتهما إلى التوقيت الفعلي الآن، فيظهر للطالب التوقيت التقديري المتوقع لوصول دوره بتنسيق <code>hh:mm - hh:mm</code> على الشاشة وهاتفه.
+          <hr style={{ border: 'none', borderTop: '1px solid var(--border-light)' }} />
+
+          {/* Section: Coordinator Role Security PIN */}
+          <div>
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Shield size={18} color="var(--ksu-green)" />
+              الرقم السري الخاص بمنظمي الصالات (Staff PIN)
+            </h3>
+
+            <div style={{ maxWidth: '380px', marginBottom: '8px' }}>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }}>
+                رمز دخول منظمي الصالات:
+              </label>
+              <input 
+                type="password"
+                className="form-input numeric"
+                value={config.coordinatorPin || ''}
+                onChange={async (e) => {
+                  const val = e.target.value;
+                  handleChange('coordinatorPin', val);
+                  if (val.trim()) {
+                    const hashed = await computeCoordHash(val);
+                    handleChange('coordinatorPinHash', hashed);
+                  }
+                }}
+                placeholder="••••••••••••"
+                style={{ fontFamily: 'monospace', fontWeight: 800, letterSpacing: '2px', fontSize: '1.1rem' }}
+              />
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>
+                هذا الرمز يُعطى لمنظمي الأجهزة في الصالة. يمنحهم فقط صلاحية إدارة الطابور ورصد النتائج والإحصائيات، مع إخفاء الهيدر وحجب صلاحية حذف المشاركين أو إعادة القرعة.
+              </span>
             </div>
           </div>
 

@@ -34,19 +34,22 @@ export default function ScoreModal({
   const handleSave = () => {
     if (isWalkover) {
       if (!walkoverWinnerId) {
-        alert('يرجى تحديد اللاعب الفائز بالانسحاب');
+        alert('يرجى تحديد نوع الانسحاب');
         return;
       }
+      const isDouble = walkoverWinnerId === 'double';
       onSaveScore({
         ...match,
         status: 'walkover',
-        walkoverWinnerId,
-        score1: walkoverWinnerId === p1?.id ? 3 : 0,
-        score2: walkoverWinnerId === p2?.id ? 3 : 0,
+        isDoubleWalkover: isDouble,
+        walkoverWinnerId: isDouble ? 'double' : walkoverWinnerId,
+        score1: isDouble ? 0 : (walkoverWinnerId === p1?.id ? 3 : 0),
+        score2: isDouble ? 0 : (walkoverWinnerId === p2?.id ? 3 : 0),
         cards1: { yellow: yellow1, red: red1 },
         cards2: { yellow: yellow2, red: red2 },
         penalty1: null,
         penalty2: null,
+        winnerId: isDouble ? null : walkoverWinnerId,
         completedAt: new Date().toISOString()
       });
       onClose();
@@ -126,16 +129,22 @@ export default function ScoreModal({
           {isWalkover ? (
             <div style={{ background: 'var(--bg-subtle)', padding: '16px', borderRadius: '8px' }}>
               <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '8px' }}>
-                حدد اللاعب الحاضر (الفائز بنتيجة 3 - 0):
+                نوع الانسحاب والنتيجة:
               </label>
               <select 
                 className="form-select"
                 value={walkoverWinnerId}
                 onChange={(e) => setWalkoverWinnerId(e.target.value)}
               >
-                <option value={p1?.id}>{p1?.name} ({p1?.team})</option>
-                <option value={p2?.id}>{p2?.name} ({p2?.team})</option>
+                <option value={p1?.id}>فوز {p1?.name} (3 - 0) بسبب انسحاب {p2?.name}</option>
+                <option value={p2?.id}>فوز {p2?.name} (3 - 0) بسبب انسحاب {p1?.name}</option>
+                <option value="double">⚠️ انسحاب كلا الطرفين (0 - 0) — كلاهما يحصل على 0 نقطة</option>
               </select>
+              {walkoverWinnerId === 'double' && (
+                <div style={{ marginTop: '8px', fontSize: '0.78rem', color: '#B91C1C', background: '#FEF2F2', padding: '6px 10px', borderRadius: '6px', border: '1px solid #FECACA' }}>
+                  تنبيه: سيتم تسجيل النتيجة 0 - 0 مع احتساب هزيمة لكلا اللاعبين و 0 نقطة لكل منهما في ترتيب المجموعة.
+                </div>
+              )}
             </div>
           ) : (
             <>

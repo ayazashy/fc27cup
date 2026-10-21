@@ -7,21 +7,19 @@
     <script>
       // SPA Router redirect for GitHub Pages
       (function() {
-        var pathSegmentsToKeep = 1; // repository name on github.io/<repo>/
         var l = window.location;
         var pathname = l.pathname;
         var search = l.search;
         var hash = l.hash;
 
-        // If path has /KSUHTSTAFF, pass it as query parameter to index.html
-        var isKsuStaff = pathname.toUpperCase().indexOf('KSUHTSTAFF') !== -1;
-        var redirectQuery = isKsuStaff ? '?KSUHTSTAFF' : '';
+        var isKsuStaff = pathname.toUpperCase().indexOf('KSUHTSTAFF') !== -1 || search.toUpperCase().indexOf('KSUHTSTAFF') !== -1 || hash.toUpperCase().indexOf('KSUHTSTAFF') !== -1;
+        var redirectQuery = isKsuStaff ? '?KSUHTSTAFF' : search;
 
-        // Extract repository prefix if on GitHub Pages (e.g. /<repo>/)
-        var parts = pathname.split('/').filter(Boolean);
-        var repoPrefix = parts.length > 0 ? '/' + parts[0] + '/' : '/';
+        // Ensure GitHub Pages ALWAYS preserves /fc27cup/ and never strips it
+        var isGitHubPages = l.hostname.indexOf('github.io') !== -1;
+        var repoPrefix = isGitHubPages ? '/fc27cup/' : '/';
 
-        l.replace(repoPrefix + redirectQuery + (search && !isKsuStaff ? search : '') + hash);
+        l.replace(repoPrefix + redirectQuery + hash);
       })();
     </script>
   </head>

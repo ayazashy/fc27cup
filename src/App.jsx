@@ -21,7 +21,8 @@ import {
   AlertCircle,
   ExternalLink,
   Share2,
-  RefreshCw
+  RefreshCw,
+  Lock
 } from 'lucide-react';
 import { 
   saveTournamentToFirestore, 
@@ -37,8 +38,13 @@ import {
   isKsuStaffRoute, 
   getStoredAdminKey, 
   clearAdminKey, 
+  getStoredAdminRole,
+  storeAdminRole,
+  clearAdminRole,
   verifyAndDecodeKey, 
-  ADMIN_ROUTE_PATH 
+  ADMIN_ROUTE_PATH,
+  getAdminNavigationUrl,
+  getPublicNavigationUrl
 } from './utils/securityGate';
 
 const STORAGE_KEY = 'ksu_fc27_tournament_state_v1';
@@ -64,11 +70,26 @@ const DEFAULT_CONFIG = {
     3: dayAfterIso,
     knockout: tomorrowIso
   },
+  // Admin-configurable fixed start time per day (HH:MM in 24h format)
+  dayStartTimes: {
+    1: '18:00',
+    2: '18:00',
+    3: '18:00',
+    knockout: '17:00'
+  },
+  // Break intervals per day: [{from:"HH:MM", to:"HH:MM"}]
+  dayBreaks: {
+    1: [],
+    2: [],
+    3: [],
+    knockout: []
+  },
   activeDayOverride: null, // null = auto by current date, or 1, 2, etc.
   minMatchDuration: 10,
   maxMatchDuration: 15,
   forfeitScoreWinner: 3,
-  forfeitScoreLoser: 0
+  forfeitScoreLoser: 0,
+  coordinatorPinHash: 'e60d420bdb50f4a29ee9489a96a3aa94bfa4b37c0c52a822564abb3a2213564b'
 };
 
 // Helper: Read tournament cache synchronously from localStorage on initial load
@@ -78,13 +99,15 @@ function getInitialTournamentData() {
     if (cached) {
       const parsed = JSON.parse(cached);
       if (parsed && typeof parsed === 'object') {
+        const loadedConfig = (parsed.config && typeof parsed.config === 'object')
+          ? { ...DEFAULT_CONFIG, ...parsed.config }
+          : DEFAULT_CONFIG;
+        delete loadedConfig.coordinatorPin;
         return {
           participants: Array.isArray(parsed.participants) ? parsed.participants : [],
           groups: Array.isArray(parsed.groups) ? parsed.groups : [],
           matches: Array.isArray(parsed.matches) ? parsed.matches : [],
-          config: (parsed.config && typeof parsed.config === 'object')
-            ? { ...DEFAULT_CONFIG, ...parsed.config }
-            : DEFAULT_CONFIG
+          config: loadedConfig
         };
       }
     }
@@ -138,6 +161,7 @@ export default function App() {
   // Route & Security Gate State
   const [isAdminRoute, setIsAdminRoute] = useState(isKsuStaffRoute());
   const [isUnlocked, setIsUnlocked] = useState(false);
+  const [userRole, setUserRole] = useState(() => getStoredAdminRole() || 'master_admin');
   const [adminSecretCode, setAdminSecretCode] = useState(null);
   const [isCheckingStoredKey, setIsCheckingStoredKey] = useState(true);
 
@@ -159,9 +183,14 @@ export default function App() {
       try {
         const stored = getStoredAdminKey();
         if (stored) {
-          const result = await verifyAndDecodeKey(stored);
+          const result = await verifyAndDecodeKey(stored, config);
           if (result.success && result.payload) {
             setIsUnlocked(true);
+            const role = result.role || getStoredAdminRole() || 'master_admin';
+            setUserRole(role);
+            if (role === 'coordinator') {
+              setActiveTab('matches');
+            }
             setAdminSecretCode(result.payload.secretCode);
           }
         }
@@ -178,6 +207,12 @@ export default function App() {
       setIsAdminRoute(isKsuStaffRoute());
     };
     window.addEventListener('popstate', handleLocationChange);
+
+    // If accessed via path /KSUHTSTAFF, normalize immediately to query ?KSUHTSTAFF
+    // to preserve /fc27cup/ base directory on GitHub Pages and localhost
+    if (window.location.pathname.toUpperCase().includes('KSUHTSTAFF')) {
+      window.history.replaceState({}, '', getAdminNavigationUrl());
+    }
 
     let unsubscribe = null;
 
@@ -302,20 +337,22 @@ export default function App() {
     }
   }, [participants, groups, matches, config]);
 
-  // Navigation Handlers
+  // Navigation Handlers (Preserves base path & repository name)
   const handleNavigateToAdmin = () => {
-    window.history.pushState({}, '', ADMIN_ROUTE_PATH);
+    window.history.pushState({}, '', getAdminNavigationUrl());
     setIsAdminRoute(true);
   };
 
   const handleNavigateToPublic = () => {
-    window.history.pushState({}, '', '/');
+    window.history.pushState({}, '', getPublicNavigationUrl());
     setIsAdminRoute(false);
   };
 
   const handleLockDashboard = () => {
     clearAdminKey();
+    clearAdminRole();
     setIsUnlocked(false);
+    setUserRole('master_admin');
     setAdminSecretCode(null);
     showNotification('تم قفل لوحة الإدارة بنجاح 🔒', 'info');
   };
@@ -617,10 +654,17 @@ export default function App() {
   if (!isUnlocked) {
     return (
       <AdminLockScreen
-        onUnlockSuccess={(payload, key) => {
+        config={config}
+        onUnlockSuccess={(payload, key, role) => {
           setIsUnlocked(true);
+          setUserRole(role);
           setAdminSecretCode(payload.secretCode);
-          showNotification('تم فك تشفير لوحة الإدارة والتحقق بنجاح! 🔓', 'success');
+          if (role === 'coordinator') {
+            setActiveTab('matches');
+            showNotification('مرحباً بك في بوابة منظم الصالة والمباريات! 🎮', 'success');
+          } else {
+            showNotification('تم فك تشفير لوحة الإدارة والتحقق بنجاح! 🔓', 'success');
+          }
         }}
         onGoToPublic={handleNavigateToPublic}
       />
@@ -653,39 +697,84 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Header with Logo, Backup, Live Sync, Public Switch & Lock Button */}
-      <Header
-        participantsCount={participants.length}
-        groupsCount={groups.length}
-        completedMatchesCount={completedMatchesCount}
-        totalMatchesCount={matches.length}
-        firestoreStatus={firestoreStatus}
-        onSaveToCloud={handleSaveToCloud}
-        isSaving={isSaving}
-        onExportBackup={handleExportBackup}
-        onImportBackup={handleImportBackup}
-        onViewPublic={handleNavigateToPublic}
-        onLockDashboard={handleLockDashboard}
-      />
+      {/* Top Bar for Coordinators (Header completely removed as requested) vs Full Header for Master Admin */}
+      {userRole === 'coordinator' ? (
+        <header style={{
+          background: '#FFFFFF',
+          borderBottom: '1px solid var(--border-light)',
+          padding: '10px 18px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '10px',
+          boxShadow: 'var(--shadow-sm)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <img src={logoUrl} alt="شعار البطولة" style={{ height: '36px', width: 'auto' }} />
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '0.98rem', color: 'var(--ksu-green)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>🎮 بوابة منظم الصالة والمباريات</span>
+                <span className="badge badge-green" style={{ fontSize: '0.7rem' }}>منظم معتمد</span>
+              </div>
+              <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>
+                كأس السكن: FC27 • إدارة الطوابير، رصد النتائج، وشجرة الإقصائيات
+              </div>
+            </div>
+          </div>
 
-      {/* Modern Navigation Tabs */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span className="badge badge-gray numeric" style={{ fontSize: '0.75rem' }}>
+              {completedMatchesCount} / {matches.length} منتهية
+            </span>
+            <button 
+              className="btn btn-secondary btn-sm"
+              onClick={handleLockDashboard}
+              style={{ fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '5px' }}
+            >
+              <Lock size={13} />
+              <span>قفل اللوحة</span>
+            </button>
+          </div>
+        </header>
+      ) : (
+        <Header
+          participantsCount={participants.length}
+          groupsCount={groups.length}
+          completedMatchesCount={completedMatchesCount}
+          totalMatchesCount={matches.length}
+          firestoreStatus={firestoreStatus}
+          onSaveToCloud={handleSaveToCloud}
+          isSaving={isSaving}
+          onExportBackup={handleExportBackup}
+          onImportBackup={handleImportBackup}
+          onViewPublic={handleNavigateToPublic}
+          onLockDashboard={handleLockDashboard}
+        />
+      )}
+
+      {/* Modern Navigation Tabs (Restricted for Coordinator, Full for Master Admin) */}
       <nav className="nav-tabs">
         <div className="tabs-container">
-          <button 
-            className={`tab-btn ${activeTab === 'participants' ? 'active' : ''}`}
-            onClick={() => setActiveTab('participants')}
-          >
-            <Users size={18} />
-            <span>المشاركون والاستيراد</span>
-          </button>
+          {userRole !== 'coordinator' && (
+            <>
+              <button 
+                className={`tab-btn ${activeTab === 'participants' ? 'active' : ''}`}
+                onClick={() => setActiveTab('participants')}
+              >
+                <Users size={18} />
+                <span>المشاركون والاستيراد</span>
+              </button>
 
-          <button 
-            className={`tab-btn ${activeTab === 'groups' ? 'active' : ''}`}
-            onClick={() => setActiveTab('groups')}
-          >
-            <Shuffle size={18} />
-            <span>القرعة والمجموعات</span>
-          </button>
+              <button 
+                className={`tab-btn ${activeTab === 'groups' ? 'active' : ''}`}
+                onClick={() => setActiveTab('groups')}
+              >
+                <Shuffle size={18} />
+                <span>القرعة والمجموعات</span>
+              </button>
+            </>
+          )}
 
           <button 
             className={`tab-btn ${activeTab === 'matches' ? 'active' : ''}`}
@@ -695,13 +784,15 @@ export default function App() {
             <span>إدارة المباريات والصالة</span>
           </button>
 
-          <button 
-            className={`tab-btn ${activeTab === 'days' ? 'active' : ''}`}
-            onClick={() => setActiveTab('days')}
-          >
-            <CalendarDays size={18} />
-            <span>جدول الأيام</span>
-          </button>
+          {userRole !== 'coordinator' && (
+            <button 
+              className={`tab-btn ${activeTab === 'days' ? 'active' : ''}`}
+              onClick={() => setActiveTab('days')}
+            >
+              <CalendarDays size={18} />
+              <span>جدول الأيام</span>
+            </button>
+          )}
 
           <button 
             className={`tab-btn ${activeTab === 'knockout' ? 'active' : ''}`}
@@ -711,13 +802,15 @@ export default function App() {
             <span>أدوار خروج المغلوب</span>
           </button>
 
-          <button 
-            className={`tab-btn ${activeTab === 'tv' ? 'active' : ''}`}
-            onClick={() => setActiveTab('tv')}
-          >
-            <Tv size={18} />
-            <span>شاشة الصالة</span>
-          </button>
+          {userRole !== 'coordinator' && (
+            <button 
+              className={`tab-btn ${activeTab === 'tv' ? 'active' : ''}`}
+              onClick={() => setActiveTab('tv')}
+            >
+              <Tv size={18} />
+              <span>شاشة الصالة</span>
+            </button>
+          )}
 
           <button 
             className={`tab-btn ${activeTab === 'stats' ? 'active' : ''}`}
@@ -727,19 +820,21 @@ export default function App() {
             <span>الإحصائيات والجوائز</span>
           </button>
 
-          <button 
-            className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
-            onClick={() => setActiveTab('settings')}
-          >
-            <Settings size={18} />
-            <span>إعدادات البطولة</span>
-          </button>
+          {userRole !== 'coordinator' && (
+            <button 
+              className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
+              onClick={() => setActiveTab('settings')}
+            >
+              <Settings size={18} />
+              <span>إعدادات البطولة</span>
+            </button>
+          )}
         </div>
       </nav>
 
       {/* Main Tab Content */}
       <main className="main-content">
-        {activeTab === 'participants' && (
+        {userRole !== 'coordinator' && activeTab === 'participants' && (
           <ParticipantsTab
             participants={participants}
             setParticipants={setParticipants}
@@ -747,7 +842,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'groups' && (
+        {userRole !== 'coordinator' && activeTab === 'groups' && (
           <GroupsTab
             groups={groups}
             setGroups={setGroups}
@@ -772,7 +867,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'days' && (
+        {userRole !== 'coordinator' && activeTab === 'days' && (
           <ScheduleDaysTab
             matches={matches}
             setMatches={setMatches}
@@ -791,12 +886,13 @@ export default function App() {
             setMatches={setMatches}
             participants={participants}
             config={config}
+            setConfig={setConfig}
             onNotify={showNotification}
             onAtomicMatchUpdate={handleAtomicMatchUpdate}
           />
         )}
 
-        {activeTab === 'tv' && (
+        {userRole !== 'coordinator' && activeTab === 'tv' && (
           <TvDisplayTab
             matches={matches}
             groups={groups}
@@ -816,7 +912,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'settings' && (
+        {userRole !== 'coordinator' && activeTab === 'settings' && (
           <SettingsTab
             config={config}
             setConfig={setConfig}

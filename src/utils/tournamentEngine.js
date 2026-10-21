@@ -60,6 +60,97 @@ export function calculateEstimatedMatchTime(matchesAhead = 0, minDuration = 10, 
 }
 
 /**
+ * Format minutes-since-midnight to Arabic 12h time string
+ */
+export function formatMinsToTime12(totalMins) {
+  const h = Math.floor(totalMins / 60) % 24;
+  const m = Math.round(totalMins % 60);
+  const ampm = h >= 12 ? 'م' : 'ص';
+  const h12 = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
+/**
+ * Parse "HH:MM" to total minutes since midnight
+ */
+export function parseTimeToMins(timeStr) {
+  if (!timeStr || !timeStr.includes(':')) return 0;
+  const [hStr, mStr] = timeStr.split(':');
+  return Number(hStr) * 60 + Number(mStr);
+}
+
+/**
+ * Calculate fixed scheduled time for every match in a day.
+ * 
+ * Algorithm:
+ *   - Each console runs its matches sequentially (by orderOnConsole).
+ *   - All consoles start at the same day-start time.
+ *   - Matches are scheduled greedily: the match starts at max(dayStart + consoleTimeElapsed, breakEnd).
+ *   - Break intervals apply globally: if a match's slot falls during a break it is pushed to the break's end.
+ * 
+ * @param {Array} dayMatches   All matches for a given day (each has consoleId, orderOnConsole)
+ * @param {string} startTimeStr  "HH:MM" day start time
+ * @param {number} matchDurationMins  Fixed duration per match in minutes
+ * @param {Array} breaks  [{from:"HH:MM", to:"HH:MM"}]
+ * @returns {Object} matchId -> { startMins, endMins, timeStr, endTimeStr }
+ */
+export function calculateFixedMatchSchedule(dayMatches, startTimeStr = '18:00', matchDurationMins = 12, breaks = []) {
+  const startMins = parseTimeToMins(startTimeStr);
+  const parsedBreaks = (breaks || [])
+    .filter(b => b && b.from && b.to)
+    .map(b => ({ from: parseTimeToMins(b.from), to: parseTimeToMins(b.to) }))
+    .filter(b => b.to > b.from)
+    .sort((a, b) => a.from - b.from);
+
+  // Group matches per console, sorted by orderOnConsole
+  const consoleQueues = {};
+  dayMatches.forEach(m => {
+    const cid = m.consoleId || 1;
+    if (!consoleQueues[cid]) consoleQueues[cid] = [];
+    consoleQueues[cid].push(m);
+  });
+  Object.values(consoleQueues).forEach(q => q.sort((a, b) => (a.orderOnConsole || 0) - (b.orderOnConsole || 0)));
+
+  /**
+   * Given a proposed start time (in minutes since midnight), push it past any breaks that overlap.
+   */
+  const adjustForBreaks = (proposedStart) => {
+    let adjusted = proposedStart;
+    for (const brk of parsedBreaks) {
+      // If the match would start during a break, push to break end
+      if (adjusted >= brk.from && adjusted < brk.to) {
+        adjusted = brk.to;
+      }
+      // If the match would end inside a break (start before break, end during break), push to break end
+      if (adjusted < brk.from && adjusted + matchDurationMins > brk.from) {
+        adjusted = brk.to;
+      }
+    }
+    return adjusted;
+  };
+
+  const result = {};
+  Object.entries(consoleQueues).forEach(([cid, queue]) => {
+    let cursorMins = startMins;
+    queue.forEach(m => {
+      const slotStart = adjustForBreaks(cursorMins);
+      const slotEnd = slotStart + matchDurationMins;
+      result[m.id] = {
+        startMins: slotStart,
+        endMins: slotEnd,
+        timeStr: formatMinsToTime12(slotStart),
+        endTimeStr: formatMinsToTime12(slotEnd)
+      };
+      cursorMins = slotEnd;
+    });
+  });
+
+  return result;
+}
+
+
+
+/**
  * Dynamic Load Balancing Across Consoles
  * If a device has finished all its matches or has significantly fewer queued matches,
  * it takes over remaining queued matches from overloaded devices so workload is equalized!
@@ -293,7 +384,7 @@ export function generateGroupsAndMatches(participants, config) {
     });
   });
 
-    // Automatically split matches into days based on configured tournament days (default: 2)
+  // Automatically split matches into days based on configured tournament days (default: 2)
   const initialDays = Number(config.tournamentDays) || 2;
   const matchesWithDays = splitMatchesIntoDays(matches, activePlayers, initialDays, consolesCount);
 
@@ -301,12 +392,168 @@ export function generateGroupsAndMatches(participants, config) {
 }
 
 /**
+ * Add newly registered participants into incomplete groups (< 4 players) WITHOUT resetting the draw.
+ * Preserves existing matches, completed scores, and standings. Only creates new matches for new participants.
+ */
+export function fillIncompleteGroupsAndAddMatches(currentGroups, currentMatches, allParticipants, config) {
+  const targetGroupSize = Number(config.playersPerGroup) || 4;
+  const consolesCount = Number(config.consolesCount) || 5;
+
+  const assignedPlayerIds = new Set();
+  currentGroups.forEach(g => (g.playerIds || []).forEach(id => assignedPlayerIds.add(id)));
+
+  // Players not yet in any group
+  const unassignedPlayers = allParticipants.filter(p => !assignedPlayerIds.has(p.id));
+
+  if (unassignedPlayers.length === 0) {
+    return {
+      success: false,
+      message: 'جميع المشاركين مدرجون بالفعل في المجموعات، لا يوجد لاعبون جدد.'
+    };
+  }
+
+  const updatedGroups = currentGroups.map(g => ({ ...g, playerIds: [...g.playerIds] }));
+  const updatedMatches = [...currentMatches];
+
+  let maxMatchNum = updatedMatches.reduce((max, m) => Math.max(max, Number(m.matchNumber) || 0), 0);
+  let addedPlayersCount = 0;
+  const newMatchesList = [];
+
+  const getRoundNumberForPair = (grp, p1, p2) => {
+    const grpMatches = updatedMatches.concat(newMatchesList).filter(m => m.groupId === grp.id);
+    const p1Matches = grpMatches.filter(m => m.player1Id === p1 || m.player2Id === p1);
+    const p2Matches = grpMatches.filter(m => m.player1Id === p2 || m.player2Id === p2);
+    const usedRounds = new Set([...p1Matches, ...p2Matches].map(m => m.roundNumber));
+    for (let r = 1; r <= 3; r++) {
+      if (!usedRounds.has(r)) return r;
+    }
+    return (grpMatches.length % 3) + 1;
+  };
+
+  // Step 1: Fill incomplete groups first
+  updatedGroups.forEach(grp => {
+    while (grp.playerIds.length < targetGroupSize && unassignedPlayers.length > 0) {
+      const newPlayer = unassignedPlayers.shift();
+      const existingMembers = [...grp.playerIds];
+      grp.playerIds.push(newPlayer.id);
+      addedPlayersCount++;
+
+      // Create a match against each existing member
+      existingMembers.forEach(otherId => {
+        maxMatchNum++;
+        const roundNum = getRoundNumberForPair(grp, otherId, newPlayer.id);
+        newMatchesList.push({
+          id: `m_${grp.id}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+          matchNumber: maxMatchNum,
+          stage: 'group',
+          groupId: grp.id,
+          groupName: grp.name,
+          roundNumber: roundNum,
+          player1Id: otherId,
+          player2Id: newPlayer.id,
+          consoleId: (newMatchesList.length % consolesCount) + 1,
+          orderOnConsole: 1,
+          status: 'scheduled',
+          score1: null,
+          score2: null,
+          cards1: { yellow: 0, red: 0 },
+          cards2: { yellow: 0, red: 0 },
+          penalty1: null,
+          penalty2: null,
+          walkoverWinnerId: null,
+          winnerId: null,
+          startedAt: null,
+          completedAt: null
+        });
+      });
+    }
+  });
+
+  // Step 2: If there are still 2 or more unassigned players left, create new group(s)
+  while (unassignedPlayers.length >= 2) {
+    const newGroupIdx = updatedGroups.length + 1;
+    const letter = ARABIC_LETTERS[newGroupIdx - 1] || `${newGroupIdx}`;
+    const newGroup = {
+      id: `group_${newGroupIdx}`,
+      index: newGroupIdx,
+      name: `المجموعة ${newGroupIdx} (${letter})`,
+      shortName: letter,
+      playerIds: []
+    };
+
+    while (newGroup.playerIds.length < targetGroupSize && unassignedPlayers.length > 0) {
+      const newPlayer = unassignedPlayers.shift();
+      newGroup.playerIds.push(newPlayer.id);
+      addedPlayersCount++;
+    }
+
+    const n = newGroup.playerIds.length;
+    let localRound = 1;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        maxMatchNum++;
+        newMatchesList.push({
+          id: `m_${newGroup.id}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+          matchNumber: maxMatchNum,
+          stage: 'group',
+          groupId: newGroup.id,
+          groupName: newGroup.name,
+          roundNumber: localRound,
+          player1Id: newGroup.playerIds[i],
+          player2Id: newGroup.playerIds[j],
+          consoleId: (newMatchesList.length % consolesCount) + 1,
+          orderOnConsole: 1,
+          status: 'scheduled',
+          score1: null,
+          score2: null,
+          cards1: { yellow: 0, red: 0 },
+          cards2: { yellow: 0, red: 0 },
+          penalty1: null,
+          penalty2: null,
+          walkoverWinnerId: null,
+          winnerId: null,
+          startedAt: null,
+          completedAt: null
+        });
+        localRound = (localRound % 3) + 1;
+      }
+    }
+    updatedGroups.push(newGroup);
+  }
+
+  // Combine and re-balance days
+  const allUpdatedMatches = [...updatedMatches, ...newMatchesList];
+  const tournamentDays = Number(config.tournamentDays) || 2;
+  const balancedMatches = splitMatchesIntoDays(allUpdatedMatches, allParticipants, tournamentDays, consolesCount);
+
+  return {
+    success: true,
+    groups: updatedGroups,
+    matches: balancedMatches,
+    addedCount: addedPlayersCount,
+    newMatchesCount: newMatchesList.length,
+    remainingUnassigned: unassignedPlayers.length
+  };
+}
+
+/**
  * Automatically determine the Current (Now) and Next match on each console,
  * with queue positions and estimated start times
  */
-export function getConsoleStatusMap(matches, consolesCount = 5, minDuration = 10, maxDuration = 15, isLiveActive = true) {
+export function getConsoleStatusMap(matches, consolesCount = 5, minDuration = 10, maxDuration = 15, isLiveActive = true, config = null) {
   const map = {};
-  const now = new Date();
+
+  // Compute fixed schedule strictly from tournament start time (default 18:00) and break windows
+  let fixedSchedule = {};
+  if (matches.length > 0) {
+    const dayNumber = matches[0]?.dayNumber || 1;
+    const isKnockout = matches.some(m => m.stage && m.stage !== 'group' && !m.groupId);
+    const dayKey = isKnockout ? 'knockout' : dayNumber;
+    const startTime = config?.dayStartTimes?.[dayKey] || config?.dayStartTimes?.[1] || '18:00';
+    const breaks = config?.dayBreaks?.[dayKey] || config?.dayBreaks?.[1] || [];
+    const avgDuration = Math.round(((Number(config?.minMatchDuration) || minDuration) + (Number(config?.maxMatchDuration) || maxDuration)) / 2);
+    fixedSchedule = calculateFixedMatchSchedule(matches, startTime, avgDuration, breaks);
+  }
 
   for (let c = 1; c <= consolesCount; c++) {
     const consoleMatches = matches
@@ -330,53 +577,53 @@ export function getConsoleStatusMap(matches, consolesCount = 5, minDuration = 10
       }
     }
 
-    // Attach estimated times to all unfinished matches on this console
-    let queueAheadCounter = (current && current.status === 'live') ? 1 : 0;
-
-    const enrichedMatches = consoleMatches.map(m => {
+    // Attach STRICT FIXED times to all matches on this console (never depends on new Date() or drift)
+    const enrichedMatches = consoleMatches.map((m, mIdx) => {
       const isDone = m.status === 'completed' || m.status === 'walkover';
       const isCur = current && current.id === m.id;
+      const isNxt = nextMatch && nextMatch.id === m.id;
+      
+      // Fallback safe fixed time if sched is missing: start from 18:00 + (mIdx * 12 mins)
+      let sched = fixedSchedule[m.id];
+      if (!sched) {
+        const fallbackStartMins = 18 * 60 + mIdx * 12;
+        const fallbackEndMins = fallbackStartMins + 12;
+        sched = {
+          startMins: fallbackStartMins,
+          endMins: fallbackEndMins,
+          timeStr: formatMinsToTime12(fallbackStartMins),
+          endTimeStr: formatMinsToTime12(fallbackEndMins)
+        };
+      }
 
       if (isDone) {
-        return { ...m, estimatedTime: null };
+        return { ...m, estimatedTime: null, fixedSchedule: sched };
       }
+
+      const est = {
+        isNow: isCur && isLiveActive,
+        isNext: isNxt && isLiveActive,
+        fixedTimeStr: sched.timeStr,
+        fixedEndTimeStr: sched.endTimeStr,
+        rangeStr: sched.timeStr,
+        fullRangeStr: `${sched.timeStr} - ${sched.endTimeStr}`,
+        label: `الموعد المقرر: ${sched.timeStr} - ${sched.endTimeStr}`
+      };
 
       if (!isLiveActive) {
-        return {
-          ...m,
-          estimatedTime: {
-            isNow: false,
-            isFutureDay: true,
-            label: 'مجدولة لليوم القادم',
-            rangeStr: 'مجدولة'
-          }
-        };
+        est.isFutureDay = true;
+        est.isNow = false;
+        est.isNext = false;
+        est.label = `مجدولة: ${sched.timeStr} - ${sched.endTimeStr}`;
+      } else if (isCur) {
+        est.label = 'الجارية الآن على الجهاز';
+      } else if (isNxt) {
+        est.label = `المباراة التالية: ${sched.timeStr}`;
       }
 
-      if (isCur && m.status === 'live') {
-        return {
-          ...m,
-          estimatedTime: { isNow: true, label: 'الآن (جارية بالصالة)', rangeStr: 'جارية الآن' }
-        };
-      }
-
-      if (isCur && m.status !== 'live') {
-        return {
-          ...m,
-          estimatedTime: {
-            isNow: true,
-            matchesAhead: 0,
-            label: 'جاهزة للبدء الآن',
-            rangeStr: 'جاهزة للبدء الآن'
-          }
-        };
-      }
-
-      // Queued match ahead
-      const matchesAhead = queueAheadCounter++;
-      const est = calculateEstimatedMatchTime(matchesAhead, minDuration, maxDuration, now);
       return {
         ...m,
+        fixedSchedule: sched,
         estimatedTime: est
       };
     });
@@ -457,7 +704,13 @@ export function calculateGroupStandings(group, allMatches, participantsMap, conf
     p2.gd = p2.gf - p2.ga;
 
     if (m.status === 'walkover') {
-      if (m.walkoverWinnerId === p1.playerId) {
+      if (m.isDoubleWalkover || m.walkoverWinnerId === 'double') {
+        // Both players forfeit: 0-0 score, 0 points each, 1 loss each
+        p1.lost += 1;
+        p1.points += 0;
+        p2.lost += 1;
+        p2.points += 0;
+      } else if (m.walkoverWinnerId === p1.playerId) {
         p1.won += 1;
         p1.points += pointsWin;
         p2.lost += 1;
@@ -615,12 +868,111 @@ export function checkGroupQualificationStatus(group, allMatches, participantsMap
 }
 
 /**
+ * Calculate Best Runners-up across all groups
+ * Ranks all 2nd-place finishers across all groups using official criteria:
+ * 1. Points (النقاط)
+ * 2. Goal Difference (فارق الأهداف)
+ * 3. Goals For / Scored (الأهداف المسجلة)
+ * 4. Won matches (عدد الانتصارات)
+ * 5. Fair Play / Cards (بطاقات صفراء وحمراء أقل)
+ *
+ * Dynamically computes spotsNeeded based on target bracket size (e.g. 32 bracket - 22 champions = 10 best runners-up)
+ * or admin override.
+ */
+export function calculateBestRunnersUp(groups, allMatches, participantsMap, config = {}) {
+  if (!groups || groups.length === 0) {
+    return { runnersUp: [], spotsNeeded: 0, targetBracketSize: 16, totalGroups: 0 };
+  }
+
+  const allRunnersUp = [];
+
+  groups.forEach(group => {
+    const standings = calculateGroupStandings(group, allMatches, participantsMap, config);
+    if (standings.length >= 2) {
+      const runnerUp = standings[1];
+      const groupMatches = allMatches.filter(m => m.groupId === group.id);
+      const isGroupFinished = groupMatches.length > 0 && groupMatches.every(m => m.status === 'completed' || m.status === 'walkover');
+      
+      const p = participantsMap[runnerUp.playerId] || {};
+
+      allRunnersUp.push({
+        playerId: runnerUp.playerId,
+        playerName: p.name || 'لاعب غير معروف',
+        studentId: p.studentId || '',
+        team: p.team || '',
+        groupId: group.id,
+        groupName: group.name,
+        shortName: group.shortName || group.name,
+        played: runnerUp.played || 0,
+        won: runnerUp.won || 0,
+        drawn: runnerUp.drawn || 0,
+        lost: runnerUp.lost || 0,
+        goalsFor: runnerUp.goalsFor || 0,
+        goalsAgainst: runnerUp.goalsAgainst || 0,
+        goalDifference: runnerUp.goalDifference || 0,
+        points: runnerUp.points || 0,
+        cards: runnerUp.cards || { yellow: 0, red: 0 },
+        isFinished: isGroupFinished,
+        isGuaranteed: isGroupFinished
+      });
+    }
+  });
+
+  // Sort runners-up by official tournament tiebreakers
+  allRunnersUp.sort((a, b) => {
+    if (b.points !== a.points) return b.points - a.points;
+    if (b.goalDifference !== a.goalDifference) return b.goalDifference - a.goalDifference;
+    if (b.goalsFor !== a.goalsFor) return b.goalsFor - a.goalsFor;
+    if (b.won !== a.won) return b.won - a.won;
+    const penaltyA = (a.cards.red || 0) * 3 + (a.cards.yellow || 0);
+    const penaltyB = (b.cards.red || 0) * 3 + (b.cards.yellow || 0);
+    if (penaltyA !== penaltyB) return penaltyA - penaltyB;
+    return (a.playerName || '').localeCompare(b.playerName || '', 'ar');
+  });
+
+  // Target bracket size determination
+  let targetBracketSize = 16;
+  if (config.targetBracketSize && [8, 16, 32, 64].includes(Number(config.targetBracketSize))) {
+    targetBracketSize = Number(config.targetBracketSize);
+  } else {
+    // Auto: smallest standard power of 2 >= groups.length
+    targetBracketSize = 2;
+    while (targetBracketSize < groups.length) {
+      targetBracketSize *= 2;
+    }
+    targetBracketSize = Math.max(16, Math.min(targetBracketSize, 64));
+  }
+
+  // Calculate spots needed
+  let spotsNeeded = 0;
+  if (config.customBestRunnersUpCount !== undefined && config.customBestRunnersUpCount !== 'auto' && config.customBestRunnersUpCount !== '') {
+    spotsNeeded = Math.max(0, Number(config.customBestRunnersUpCount) || 0);
+  } else {
+    // Auto: target bracket size - number of group champions (groups.length)
+    spotsNeeded = Math.max(0, targetBracketSize - groups.length);
+  }
+
+  const enrichedRunnersUp = allRunnersUp.map((ru, idx) => ({
+    ...ru,
+    rank: idx + 1,
+    isQualified: idx < spotsNeeded
+  }));
+
+  return {
+    runnersUp: enrichedRunnersUp,
+    spotsNeeded,
+    targetBracketSize,
+    totalGroups: groups.length
+  };
+}
+
+/**
  * Generate Fully Connected Hierarchical Knockout Bracket Tree
  * Dynamically adjusts to ANY number of qualifiers (4, 8, 16, 32, 64)
- * DOES NOT display participant names until qualification is mathematically guaranteed!
+ * Supports Champions + Best Runners-up when group count does not equal standard bracket size
  */
-export function generateKnockoutTree(groups, allMatches, participantsMap, config) {
-  const qualifiersPerGroup = Number(config.qualifiersPerGroup) || 2;
+export function generateKnockoutTree(groups, allMatches, participantsMap, config = {}) {
+  const qualifiersPerGroup = Number(config.qualifiersPerGroup) || 1;
   
   if (!groups || groups.length === 0) {
     return { bracketMatches: [], roundsConfig: [] };
@@ -633,47 +985,69 @@ export function generateKnockoutTree(groups, allMatches, participantsMap, config
     allSlots.push(...slots);
   });
 
-  const expectedQualifiers = groups.length * qualifiersPerGroup;
-  if (expectedQualifiers < 2) {
-    return { bracketMatches: [], roundsConfig: [] };
-  }
-
-  let bracketSize = 2;
-  while (bracketSize < expectedQualifiers) {
-    bracketSize *= 2;
-  }
-  bracketSize = Math.min(bracketSize, 64);
-
+  const bestRunnersUpData = calculateBestRunnersUp(groups, allMatches, participantsMap, config);
+  const targetBracketSize = bestRunnersUpData.targetBracketSize;
+  const bracketSize = Math.min(targetBracketSize, 64);
   const numMatchesInR1 = bracketSize / 2;
   const round1Pairings = [];
 
-  if (qualifiersPerGroup === 1) {
-    // 1 qualifier per group: e.g. Rank 1 of G1 vs Rank 1 of G2
-    const rank1Slots = allSlots.filter(s => s.rank === 1);
-    for (let m = 0; m < numMatchesInR1; m++) {
-      const slot1 = rank1Slots[m * 2] || null;
-      const slot2 = rank1Slots[m * 2 + 1] || null;
+  const rank1Slots = allSlots.filter(s => s.rank === 1);
+  const qualifiedRunnersUp = bestRunnersUpData.runnersUp.filter(r => r.isQualified);
+
+  if (qualifiedRunnersUp.length > 0 && rank1Slots.length + qualifiedRunnersUp.length === bracketSize) {
+    // HYBRID TOURNAMENT SEEDING (Champions + Best Runners-up)
+    // First, pair champions against best runners-up (avoiding same-group clashes)
+    const availableChampions = [...rank1Slots];
+
+    qualifiedRunnersUp.forEach((ru) => {
+      let champIdx = availableChampions.findIndex(c => c.groupId !== ru.groupId);
+      if (champIdx === -1) champIdx = 0;
+      const [champ] = availableChampions.splice(champIdx, 1);
+
+      const ruSlot = {
+        groupId: ru.groupId,
+        groupName: ru.groupName,
+        shortName: ru.shortName,
+        rank: 'best_runner_up',
+        bestRunnerUpRank: ru.rank,
+        isBestRunnerUp: true,
+        placeholder: `أفضل وصيف #${ru.rank} (${ru.shortName})`,
+        shortPlaceholder: `وصيف #${ru.rank}`,
+        isGuaranteed: ru.isGuaranteed,
+        playerId: ru.isGuaranteed ? ru.playerId : null,
+        player: ru.isGuaranteed ? participantsMap[ru.playerId] : null
+      };
+
+      round1Pairings.push({ slot1: champ, slot2: ruSlot });
+    });
+
+    // Pair remaining champions against each other
+    while (availableChampions.length >= 2) {
+      const slot1 = availableChampions.shift();
+      const slot2 = availableChampions.shift();
       round1Pairings.push({ slot1, slot2 });
     }
-  } else {
-    // 2 qualifiers per group: 1st of Group i vs 2nd of Group j (from different groups)
+    if (availableChampions.length === 1) {
+      round1Pairings.push({ slot1: availableChampions.shift(), slot2: null });
+    }
+  } else if (qualifiersPerGroup === 2 && groups.length * 2 === bracketSize) {
+    // 2 qualifiers per group: 1st of Group i vs 2nd of Group j
     const firsts = allSlots.filter(s => s.rank === 1);
     const seconds = allSlots.filter(s => s.rank === 2);
     const gCount = groups.length;
     const shift = Math.max(1, Math.floor(gCount / 2));
 
     for (let m = 0; m < numMatchesInR1; m++) {
-      let slot1 = null;
-      let slot2 = null;
-
-      if (m < gCount) {
-        slot1 = firsts[m] || null;
-        const targetSecondIdx = (m + shift) % gCount;
-        slot2 = seconds[targetSecondIdx] || null;
-      } else {
-        slot1 = firsts[m % gCount] || null;
-        slot2 = seconds[(m + shift) % gCount] || null;
-      }
+      const slot1 = firsts[m] || null;
+      const targetSecondIdx = (m + shift) % gCount;
+      const slot2 = seconds[targetSecondIdx] || null;
+      round1Pairings.push({ slot1, slot2 });
+    }
+  } else {
+    // Standard pairings
+    for (let m = 0; m < numMatchesInR1; m++) {
+      const slot1 = rank1Slots[m * 2] || null;
+      const slot2 = rank1Slots[m * 2 + 1] || null;
       round1Pairings.push({ slot1, slot2 });
     }
   }
@@ -708,22 +1082,30 @@ export function generateKnockoutTree(groups, allMatches, participantsMap, config
       let g2Id = null;
       let r1 = null;
       let r2 = null;
+      let isBru1 = false;
+      let bruRank1 = null;
+      let isBru2 = false;
+      let bruRank2 = null;
 
       if (rIdx === 0) {
         const pair = round1Pairings[m] || { slot1: null, slot2: null };
         if (pair.slot1) {
-          p1Id = pair.slot1.playerId; // null if not guaranteed!
+          p1Id = pair.slot1.playerId;
           p1Placeholder = pair.slot1.placeholder;
           isG1 = pair.slot1.isGuaranteed;
           g1Id = pair.slot1.groupId;
           r1 = pair.slot1.rank;
+          isBru1 = !!pair.slot1.isBestRunnerUp;
+          bruRank1 = pair.slot1.bestRunnerUpRank || null;
         }
         if (pair.slot2) {
-          p2Id = pair.slot2.playerId; // null if not guaranteed!
+          p2Id = pair.slot2.playerId;
           p2Placeholder = pair.slot2.placeholder;
           isG2 = pair.slot2.isGuaranteed;
           g2Id = pair.slot2.groupId;
           r2 = pair.slot2.rank;
+          isBru2 = !!pair.slot2.isBestRunnerUp;
+          bruRank2 = pair.slot2.bestRunnerUpRank || null;
         }
       }
 
@@ -744,6 +1126,10 @@ export function generateKnockoutTree(groups, allMatches, participantsMap, config
         group2Id: g2Id,
         rank1: r1,
         rank2: r2,
+        isBestRunnerUp1: isBru1,
+        bestRunnerUpRank1: bruRank1,
+        isBestRunnerUp2: isBru2,
+        bestRunnerUpRank2: bruRank2,
         score1: null,
         score2: null,
         penalty1: null,
@@ -781,13 +1167,13 @@ export function generateKnockoutTree(groups, allMatches, participantsMap, config
     previousRoundMatches = currentRoundMatches;
   });
 
-  return { bracketMatches, roundsConfig: activeRounds };
+  return { bracketMatches, roundsConfig: activeRounds, bestRunnersUpData };
 }
 
 /**
  * Synchronize Existing Knockout Matches with Dynamic Group Qualification Guarantees
  */
-export function syncKnockoutTreeWithGuarantees(matches, groups, participantsMap, config) {
+export function syncKnockoutTreeWithGuarantees(matches, groups, participantsMap, config = {}) {
   if (!groups || groups.length === 0) return matches;
   const hasKnockout = matches.some(m => m.stage !== 'group');
   if (!hasKnockout) return matches;
@@ -796,6 +1182,9 @@ export function syncKnockoutTreeWithGuarantees(matches, groups, participantsMap,
   groups.forEach(grp => {
     groupStatusMap[grp.id] = checkGroupQualificationStatus(grp, matches, participantsMap, config);
   });
+
+  const bestRunnersUpData = calculateBestRunnersUp(groups, matches, participantsMap, config);
+  const runnersUpList = bestRunnersUpData.runnersUp || [];
 
   return matches.map(m => {
     if (m.stage === 'group' || m.roundIndex !== 0) return m;
@@ -807,7 +1196,20 @@ export function syncKnockoutTreeWithGuarantees(matches, groups, participantsMap,
     let p1Placeholder = m.player1Placeholder;
     let p2Placeholder = m.player2Placeholder;
 
-    if (m.group1Id) {
+    // Slot 1: Best Runner Up vs Standard Group Rank
+    if (m.isBestRunnerUp1 && m.bestRunnerUpRank1) {
+      const ru = runnersUpList.find(r => r.rank === m.bestRunnerUpRank1);
+      if (ru) {
+        p1Placeholder = `أفضل وصيف #${ru.rank} (${ru.shortName})`;
+        if (ru.isGuaranteed) {
+          updatedP1 = ru.playerId;
+          isG1 = true;
+        } else {
+          updatedP1 = null;
+          isG1 = false;
+        }
+      }
+    } else if (m.group1Id) {
       const gSlots = groupStatusMap[m.group1Id] || [];
       const slot1 = gSlots.find(s => s.rank === (m.rank1 || 1));
       if (slot1) {
@@ -822,7 +1224,20 @@ export function syncKnockoutTreeWithGuarantees(matches, groups, participantsMap,
       }
     }
 
-    if (m.group2Id) {
+    // Slot 2: Best Runner Up vs Standard Group Rank
+    if (m.isBestRunnerUp2 && m.bestRunnerUpRank2) {
+      const ru = runnersUpList.find(r => r.rank === m.bestRunnerUpRank2);
+      if (ru) {
+        p2Placeholder = `أفضل وصيف #${ru.rank} (${ru.shortName})`;
+        if (ru.isGuaranteed) {
+          updatedP2 = ru.playerId;
+          isG2 = true;
+        } else {
+          updatedP2 = null;
+          isG2 = false;
+        }
+      }
+    } else if (m.group2Id) {
       const gSlots = groupStatusMap[m.group2Id] || [];
       const slot2 = gSlots.find(s => s.rank === (m.rank2 || 2));
       if (slot2) {

@@ -4,9 +4,6 @@ import {
   Monitor, 
   Search, 
   Filter, 
-  Play, 
-  Pause, 
-  RotateCcw, 
   Clock, 
   CheckCircle2, 
   AlertCircle, 
@@ -17,11 +14,16 @@ import {
   Sliders, 
   Sparkles,
   CheckCheck,
-  MessageCircle
+  MessageCircle,
+  Play,
+  RotateCcw
 } from 'lucide-react';
 import ScoreModal from './ScoreModal';
 import WhatsAppReminderModal from './WhatsAppReminderModal';
+import SportsMatchCard from './SportsMatchCard';
+import AutoFitName from './AutoFitName';
 import { getConsoleStatusMap, rebalanceRemainingMatches, syncKnockoutTreeWithGuarantees } from '../utils/tournamentEngine';
+import { getTeamLogoUrl, DEFAULT_UNKNOWN_LOGO } from '../utils/footballTeams';
 
 export default function MatchesTab({ 
   matches, 
@@ -43,25 +45,20 @@ export default function MatchesTab({
   const [searchQuery, setSearchQuery] = useState('');
   const [showDateConfig, setShowDateConfig] = useState(false);
 
-  // Built-in Hall Match Timer
-  const [timerMinutes, setTimerMinutes] = useState(12);
-  const [timeLeft, setTimeLeft] = useState(12 * 60);
-  const [isTimerRunning, setIsTimerRunning] = useState(false);
-
-  useEffect(() => {
-    let interval = null;
-    if (isTimerRunning && timeLeft > 0) {
-      interval = setInterval(() => setTimeLeft(t => t - 1), 1000);
-    } else if (timeLeft === 0 && isTimerRunning) {
-      setIsTimerRunning(false);
-      onNotify('⏰ انتهى وقت المباراة الرسمية!', 'info');
+  // Single Console View Filter (hall coordinator can choose to focus on one console, saved in localStorage)
+  const [singleConsoleFilter, setSingleConsoleFilter] = useState(() => {
+    try {
+      return localStorage.getItem('ksu_hall_single_console_filter') || 'all';
+    } catch (e) {
+      return 'all';
     }
-    return () => clearInterval(interval);
-  }, [isTimerRunning, timeLeft, onNotify]);
+  });
 
-  const resetTimer = (mins = timerMinutes) => {
-    setIsTimerRunning(false);
-    setTimeLeft(mins * 60);
+  const handleConsoleFilterChange = (val) => {
+    setSingleConsoleFilter(val);
+    try {
+      localStorage.setItem('ksu_hall_single_console_filter', val);
+    } catch (e) {}
   };
 
   const participantsMap = useMemo(() => {
@@ -126,8 +123,8 @@ export default function MatchesTab({
 
   // Compute console status map ONLY for this specific day's matches!
   const consoleStatusMap = useMemo(() => {
-    return getConsoleStatusMap(consoleDayMatches, consolesCount, minDuration, maxDuration, isViewDayActive);
-  }, [consoleDayMatches, consolesCount, minDuration, maxDuration, isViewDayActive, timeTick]);
+    return getConsoleStatusMap(consoleDayMatches, consolesCount, minDuration, maxDuration, isViewDayActive, config);
+  }, [consoleDayMatches, consolesCount, minDuration, maxDuration, isViewDayActive, config, timeTick]);
 
   // Set of all current match IDs across all consoles for quick lookup
   const currentMatchIds = useMemo(() => {
@@ -146,17 +143,6 @@ export default function MatchesTab({
     });
     return ids;
   }, [consoleStatusMap]);
-
-  const handleStartMatch = async (match) => {
-    const updated = matches.map(m => m.id === match.id ? { ...m, status: 'live', startedAt: new Date().toISOString() } : m);
-    setMatches(updated);
-    if (onAtomicMatchUpdate) {
-      await onAtomicMatchUpdate(updated, `جاري بدء المباراة #${match.matchNumber} ومزامنة أجهزة الصالة...`);
-    }
-    onNotify(`تم بدء المباراة #${match.matchNumber} على جهاز ${match.consoleId}`, 'info');
-    resetTimer();
-    setIsTimerRunning(true);
-  };
 
   const handleSaveScore = async (updatedMatch) => {
     let updated = matches.map(m => m.id === updatedMatch.id ? updatedMatch : m);
@@ -260,60 +246,14 @@ export default function MatchesTab({
         </div>
       </div>
 
-      {/* Official Match Timer & View Mode Bar */}
-      <div className="clean-card" style={{ padding: '14px 20px', marginBottom: '16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
-          {/* Match Timer */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <Clock size={20} color="var(--ksu-green)" />
-            <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>مؤقت وقت المباراة:</span>
-            <span className="numeric" style={{ fontSize: '1.5rem', fontWeight: 800, color: timeLeft <= 60 ? '#DC2626' : 'var(--ksu-green)', minWidth: '70px', textAlign: 'center' }}>
-              {formatTimer(timeLeft)}
-            </span>
-
-            <select 
-              className="form-select"
-              style={{ width: 'auto', padding: '4px 8px', fontSize: '0.85rem' }}
-              value={timerMinutes}
-              onChange={(e) => {
-                const m = Number(e.target.value);
-                setTimerMinutes(m);
-                resetTimer(m);
-              }}
-            >
-              <option value={10}>10 دقائق (المجموعات)</option>
-              <option value={12}>12 دقيقة (الافتراضي)</option>
-              <option value={15}>15 دقيقة (دور 16 وربع)</option>
-              <option value={20}>20 دقيقة (نصف ونهائي)</option>
-            </select>
-
-            <button 
-              className={`btn ${isTimerRunning ? 'btn-danger' : 'btn-primary'} btn-sm`}
-              onClick={() => setIsTimerRunning(!isTimerRunning)}
-            >
-              {isTimerRunning ? <Pause size={14} /> : <Play size={14} />}
-              {isTimerRunning ? 'إيقاف مؤقت' : 'بدء الشوط'}
-            </button>
-
-            <button className="btn btn-secondary btn-sm" onClick={() => resetTimer()} title="إعادة تعيين المؤقت">
-              <RotateCcw size={14} />
-            </button>
-
-            <button 
-              className="btn btn-secondary btn-sm"
-              onClick={handleManualRebalance}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
-              title="موازنة المباريات المتبقية بالتساوي على أجهزة هذا اليوم لمنع فراغ أي جهاز"
-            >
-              <Scale size={14} color="var(--ksu-green)" />
-              <span>موازنة طابور اليوم {viewConsoleDay}</span>
-            </button>
-          </div>
-
-          {/* Day Filter & View Mode */}
+      {/* Hall Controls Bar - Clean, Mobile-First, Zero Horizontal Overflow */}
+      <div className="clean-card" style={{ padding: '12px 16px', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+          
+          {/* Day Selector Buttons */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            {/* Day Selector Buttons */}
-            <div style={{ display: 'flex', background: 'var(--bg-subtle)', padding: '3px', borderRadius: '8px' }}>
+            <span style={{ fontSize: '0.825rem', fontWeight: 700, color: 'var(--text-muted)' }}>اليوم:</span>
+            <div style={{ display: 'flex', background: 'var(--bg-subtle)', padding: '3px', borderRadius: '8px', flexWrap: 'wrap', gap: '2px' }}>
               <button 
                 className={`btn btn-sm ${dayFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
                 style={{ padding: '4px 10px', border: 'none', fontSize: '0.8rem' }}
@@ -340,27 +280,64 @@ export default function MatchesTab({
                 );
               })}
             </div>
+          </div>
 
-            {/* View Mode Buttons */}
+          {/* Console Filter (All consoles or focus on single console - saved in localStorage) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.825rem', fontWeight: 700, color: 'var(--text-muted)' }}>تصفية الأجهزة:</span>
+            <div style={{ display: 'flex', background: 'var(--bg-subtle)', padding: '3px', borderRadius: '8px', flexWrap: 'wrap', gap: '2px' }}>
+              <button 
+                className={`btn btn-sm ${singleConsoleFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ padding: '4px 10px', border: 'none', fontSize: '0.8rem' }}
+                onClick={() => handleConsoleFilterChange('all')}
+              >
+                جميع الأجهزة
+              </button>
+              {Array.from({ length: consolesCount }, (_, i) => i + 1).map(cId => (
+                <button 
+                  key={cId}
+                  className={`btn btn-sm ${singleConsoleFilter === String(cId) ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '4px 10px', border: 'none', fontSize: '0.8rem' }}
+                  onClick={() => handleConsoleFilterChange(String(cId))}
+                >
+                  جهاز {cId}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* View Mode Toggle & Rebalance */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', background: 'var(--bg-subtle)', padding: '3px', borderRadius: '8px' }}>
               <button 
                 className={`btn btn-sm ${viewMode === 'consoles' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '5px 14px', border: 'none' }}
+                style={{ padding: '4px 10px', border: 'none', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}
                 onClick={() => setViewMode('consoles')}
               >
-                <Monitor size={15} />
-                طوابير أجهزة الصالة (1 إلى {consolesCount})
+                <Monitor size={14} />
+                <span>طوابير الصالة</span>
               </button>
               <button 
                 className={`btn btn-sm ${viewMode === 'list' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '5px 14px', border: 'none' }}
+                style={{ padding: '4px 10px', border: 'none', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}
                 onClick={() => setViewMode('list')}
               >
-                <Calendar size={15} />
-                قائمة المباريات العامة
+                <Calendar size={14} />
+                <span>القائمة العامة</span>
               </button>
             </div>
+
+            <button 
+              className="btn btn-secondary btn-sm"
+              onClick={handleManualRebalance}
+              style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.78rem' }}
+              title="موازنة المباريات المتبقية بالتساوي على الأجهزة"
+            >
+              <Scale size={14} color="var(--ksu-green)" />
+              <span>موازنة الطابور</span>
+            </button>
           </div>
+
         </div>
       </div>
 
@@ -537,9 +514,16 @@ export default function MatchesTab({
             </div>
           </div>
 
-          {/* Consoles Grid: Strictly separated per day */}
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(280px, 1fr))`, gap: '16px' }}>
-            {Array.from({ length: consolesCount }, (_, i) => i + 1).map(cId => {
+          {/* Consoles Grid: Strictly separated per day with single console filter option */}
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: singleConsoleFilter !== 'all' ? '1fr' : 'repeat(auto-fit, minmax(310px, 1fr))', 
+            gap: '16px' 
+          }}>
+            {(singleConsoleFilter === 'all' 
+              ? Array.from({ length: consolesCount }, (_, i) => i + 1) 
+              : [parseInt(singleConsoleFilter, 10)]
+            ).map(cId => {
               const cData = consoleStatusMap[cId] || { matches: [], currentMatch: null, nextMatch: null, completedCount: 0, totalCount: 0 };
               const current = cData.currentMatch;
               const next = cData.nextMatch;
@@ -555,6 +539,9 @@ export default function MatchesTab({
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <Monitor size={20} color="var(--ksu-green)" />
                       <span style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--text-main)' }}>جهاز {cId}</span>
+                      {singleConsoleFilter !== 'all' && (
+                        <span className="badge badge-gold" style={{ fontSize: '0.7rem' }}>تركيز مخصص</span>
+                      )}
                     </div>
                     <span className="badge badge-gray numeric">
                       اليوم {viewConsoleDay}: {cData.completedCount} / {cData.totalCount} منتهية
@@ -583,68 +570,50 @@ export default function MatchesTab({
                   ) : (
                     <div style={{ 
                       background: current ? '#ECFDF5' : '#F8FAFC', 
-                      border: current ? '2.5px solid #059669' : '1px dashed var(--border-strong)', 
+                      border: current ? '2px solid #059669' : '1px dashed var(--border-strong)', 
                       borderRadius: '10px', 
-                      padding: '14px',
+                      padding: '12px',
                       boxShadow: current ? '0 4px 12px rgba(5, 150, 105, 0.12)' : 'none',
                       transition: 'all 0.2s ease'
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                         <span style={{ fontWeight: 800, fontSize: '0.85rem', color: current ? '#065F46' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: current ? '#10B981' : '#CBD5E1', display: 'inline-block' }}></span>
-                          {current ? 'الجارية الآن على الجهاز (Current)' : 'لا توجد مباراة نشطة'}
+                          <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: current ? '#10B981' : '#CBD5E1', display: 'inline-block' }}></span>
+                          {current ? 'الجارية الآن على الجهاز' : 'لا توجد مباراة نشطة'}
                         </span>
                         {current && (
-                          <span className="badge badge-green" style={{ fontWeight: 800 }}>مباراة #{current.matchNumber}</span>
+                          <span className="badge badge-green" style={{ fontWeight: 800, fontSize: '0.75rem' }}>
+                            #{current.matchNumber} {current.groupName || ''}
+                          </span>
                         )}
                       </div>
 
                       {current ? (
                         <div>
-                          <div style={{ fontSize: '0.75rem', color: '#047857', fontWeight: 600, marginBottom: '6px' }}>
-                            {current.groupName} — جولة {current.roundNumber || 1} • اليوم {current.dayNumber || 1}
-                          </div>
+                          {/* 365scores Sports Match Card */}
+                          <SportsMatchCard 
+                            match={current}
+                            p1={p1}
+                            p2={p2}
+                            isCurrent={true}
+                            onSelectMatch={setSelectedMatch}
+                            onRemindMatch={setReminderMatch}
+                          />
 
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderTop: '1px solid rgba(5, 150, 105, 0.2)', borderBottom: '1px solid rgba(5, 150, 105, 0.2)' }}>
-                            <div>
-                              <div style={{ fontWeight: 800, fontSize: '0.98rem', color: 'var(--text-main)' }}>{p1?.name}</div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{p1?.team}</div>
-                            </div>
-
-                            <div className="numeric" style={{ fontWeight: 900, fontSize: '1.35rem', color: '#059669', padding: '0 8px' }}>
-                              {current.score1 !== null ? `${current.score1} : ${current.score2}` : 'ضد'}
-                            </div>
-
-                            <div style={{ textAlign: 'left' }}>
-                              <div style={{ fontWeight: 800, fontSize: '0.98rem', color: 'var(--text-main)' }}>{p2?.name}</div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{p2?.team}</div>
-                            </div>
-                          </div>
-
-                          {/* Action buttons for Current match */}
-                          <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                            {current.status !== 'live' && (
-                              <button 
-                                className="btn btn-secondary btn-sm" 
-                                style={{ flex: 1, borderColor: '#059669', color: '#065F46' }}
-                                onClick={() => handleStartMatch(current)}
-                              >
-                                <Play size={13} />
-                                بدء المباراة
-                              </button>
-                            )}
+                          {/* Action Buttons: Direct Score Record + WhatsApp Reminder */}
+                          <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
                             <button 
                               className="btn btn-secondary btn-sm"
-                              style={{ borderColor: '#25D366', color: '#047857', display: 'flex', alignItems: 'center', gap: '4px' }}
+                              style={{ borderColor: '#25D366', color: '#047857', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem' }}
                               onClick={() => setReminderMatch(current)}
                               title="إرسال تذكير واتساب مباشر للاعبين"
                             >
                               <MessageCircle size={14} color="#25D366" />
-                              <span>تذكير</span>
+                              <span>تذكير واتساب</span>
                             </button>
                             <button 
                               className="btn btn-primary btn-sm" 
-                              style={{ flex: 1.2, fontWeight: 700 }}
+                              style={{ flex: 1, fontWeight: 700, fontSize: '0.825rem' }}
                               onClick={() => setSelectedMatch(current)}
                             >
                               رصد النتيجة وإنهاء
@@ -652,7 +621,7 @@ export default function MatchesTab({
                           </div>
                         </div>
                       ) : (
-                        <div style={{ textAlign: 'center', padding: '16px 0', color: 'var(--text-dim)', fontSize: '0.85rem' }}>
+                        <div style={{ textAlign: 'center', padding: '14px 0', color: 'var(--text-dim)', fontSize: '0.825rem' }}>
                           تم إنهاء جميع مباريات هذا الجهاز لليوم {viewConsoleDay} ✓
                         </div>
                       )}
@@ -663,199 +632,59 @@ export default function MatchesTab({
                   {isViewDayActive && next && (
                     <div style={{ 
                       background: '#FEF9C3', 
-                      border: '2px solid #CA8A04', 
-                      borderRadius: '8px', 
+                      border: '1.5px solid #CA8A04', 
+                      borderRadius: '10px', 
                       padding: '10px 12px',
                       boxShadow: '0 2px 6px rgba(202, 138, 4, 0.08)'
                     }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#854D0E', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#854D0E', display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#EAB308', display: 'inline-block' }}></span>
-                          التالية للاستعداد (Up Next):
+                          التالية للاستعداد:
                         </span>
-                        <span className="badge badge-gold" style={{ fontSize: '0.7rem' }}>مباراة #{next.matchNumber}</span>
+                        <span className="badge badge-gold" style={{ fontSize: '0.7rem' }}>#{next.matchNumber} {next.groupName || ''}</span>
                       </div>
 
-                      <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#713F12' }}>
-                        {nextP1?.name} ضد {nextP2?.name}
-                      </div>
-                      <div style={{ fontSize: '0.7rem', color: '#854D0E' }}>
-                        {next.groupName} — جولة {next.roundNumber || 1}
-                      </div>
-                      {next.estimatedTime && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#854D0E', marginTop: '6px', fontWeight: 700 }}>
-                          <Clock size={13} />
-                          <span>الوقت التقديري لبدء المباراة: {next.estimatedTime.rangeStr}</span>
-                        </div>
-                      )}
-
-                      {/* Direct WhatsApp Reminder Action for Next Match */}
-                      <div style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'space-between', 
-                        marginTop: '8px', 
-                        paddingTop: '6px', 
-                        borderTop: '1px dashed rgba(202, 138, 4, 0.4)' 
-                      }}>
-                        <button
-                          type="button"
-                          className="btn btn-sm"
-                          style={{
-                            background: '#25D366',
-                            color: '#FFFFFF',
-                            border: 'none',
-                            padding: '4px 10px',
-                            fontSize: '0.72rem',
-                            fontWeight: 800,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '5px',
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                            boxShadow: '0 2px 4px rgba(37, 211, 102, 0.3)'
-                          }}
-                          onClick={() => setReminderMatch(next)}
-                          title="إرسال تذكير مباشر بالواتساب للاعبين التاليين"
-                        >
-                          <MessageCircle size={13} />
-                          <span>تذكير اللاعبين عبر واتساب 📲</span>
-                        </button>
-
-                        <span style={{ fontSize: '0.68rem', color: '#854D0E', fontWeight: 600 }}>
-                          {nextP1?.name?.split(' ')[0]} & {nextP2?.name?.split(' ')[0]}
-                        </span>
-                      </div>
+                      {/* 365scores Sports Match Card for Next */}
+                      <SportsMatchCard 
+                        match={next}
+                        p1={nextP1}
+                        p2={nextP2}
+                        isNext={true}
+                        onSelectMatch={setSelectedMatch}
+                        onRemindMatch={setReminderMatch}
+                        compact={true}
+                      />
                     </div>
                   )}
 
                   {/* 3. FULL QUEUE FOR THIS CONSOLE IN DAY {viewConsoleDay} */}
-                  <div style={{ marginTop: '4px' }}>
+                  <div style={{ marginTop: '2px' }}>
                     <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '8px' }}>
                       طابور اليوم {viewConsoleDay} على جهاز {cId} ({cData.matches.length} مباراة):
                     </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '300px', overflowY: 'auto', paddingRight: '2px' }}>
-                      {cData.matches.map((m, idx) => {
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '320px', overflowY: 'auto', paddingRight: '2px' }}>
+                      {cData.matches.map((m) => {
                         const isCur = isViewDayActive && current && current.id === m.id;
-                        const isNext = isViewDayActive && next && next.id === m.id;
+                        const isNxt = isViewDayActive && next && next.id === m.id;
                         const isDone = m.status === 'completed' || m.status === 'walkover';
                         const mp1 = participantsMap[m.player1Id];
                         const mp2 = participantsMap[m.player2Id];
 
-                        let rowBg = '#FFFFFF';
-                        let rowBorder = 'var(--border-light)';
-                        let rowColor = 'var(--text-main)';
-
-                        if (isCur) {
-                          rowBg = '#ECFDF5';
-                          rowBorder = '#059669';
-                          rowColor = '#065F46';
-                        } else if (isNext) {
-                          rowBg = '#FEF9C3';
-                          rowBorder = '#CA8A04';
-                          rowColor = '#854D0E';
-                        } else if (isDone) {
-                          rowBg = '#F1F5F9';
-                          rowBorder = '#CBD5E1';
-                          rowColor = '#64748B';
-                        }
-
                         return (
-                          <div 
+                          <SportsMatchCard 
                             key={m.id}
-                            onClick={() => setSelectedMatch(m)}
-                            style={{
-                              padding: '7px 10px',
-                              background: rowBg,
-                              border: `1.5px solid ${rowBorder}`,
-                              borderRadius: '6px',
-                              fontSize: '0.78rem',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              cursor: 'pointer',
-                              opacity: isDone ? 0.7 : 1,
-                              transition: 'all 0.15s ease'
-                            }}
-                            title="اضغط لرصد أو تعديل النتيجة"
-                          >
-                            <div style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-                              <span className="numeric" style={{ fontWeight: 800, color: isCur ? '#059669' : (isNext ? '#854D0E' : 'var(--text-dim)'), marginLeft: '6px' }}>
-                                #{idx + 1}
-                              </span>
-                              <span style={{ fontWeight: isCur ? 800 : (isNext ? 700 : (isDone ? 500 : 600)), color: rowColor }}>
-                                {mp1?.name} ضد {mp2?.name}
-                              </span>
-                              <span style={{ fontSize: '0.68rem', color: isDone ? '#94A3B8' : 'var(--text-muted)', display: 'block' }}>
-                                {m.groupName} (جولة {m.roundNumber || 1}) • <b style={{ color: '#047857' }}>اليوم {m.dayNumber || 1}</b>
-                              </span>
-                            </div>
-
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                              {/* Quick WhatsApp Reminder Button */}
-                              {!isDone && (
-                                <button
-                                  type="button"
-                                  style={{
-                                    background: 'transparent',
-                                    border: 'none',
-                                    cursor: 'pointer',
-                                    padding: '3px 5px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    color: '#25D366',
-                                    borderRadius: '4px',
-                                    transition: 'all 0.15s ease'
-                                  }}
-                                  onMouseEnter={(e) => e.currentTarget.style.background = '#DCFCE7'}
-                                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setReminderMatch(m);
-                                  }}
-                                  title="إرسال تذكير واتساب للمباراة بالموعد التقديري"
-                                >
-                                  <MessageCircle size={15} />
-                                </button>
-                              )}
-
-                              {isViewDayActive && m.estimatedTime && !isDone && !isCur && (
-                                <span 
-                                  className="numeric"
-                                  style={{
-                                    fontSize: '0.68rem',
-                                    color: '#475569',
-                                    background: '#F1F5F9',
-                                    border: '1px solid #E2E8F0',
-                                    padding: '2px 5px',
-                                    borderRadius: '4px',
-                                    fontWeight: 700
-                                  }}
-                                  title="الوقت التقريبي المتوقع لبدء المباراة"
-                                >
-                                  {m.estimatedTime.rangeStr}
-                                </span>
-                              )}
-
-                              {isCur && (
-                                <span className="badge badge-green" style={{ fontSize: '0.68rem', fontWeight: 800 }}>الآن</span>
-                              )}
-                              {isNext && (
-                                <span className="badge badge-gold" style={{ fontSize: '0.68rem', fontWeight: 800 }}>التالية</span>
-                              )}
-                              {isDone && (
-                                <span className="numeric" style={{ fontWeight: 800, color: 'var(--text-muted)', fontSize: '0.78rem' }}>
-                                  {m.score1} : {m.score2}
-                                </span>
-                              )}
-                              {!isCur && !isNext && !isDone && (
-                                <span className="badge badge-gray" style={{ fontSize: '0.68rem' }}>
-                                  {!isViewDayActive ? `اليوم ${viewConsoleDay}` : 'انتظار'}
-                                </span>
-                              )}
-                            </div>
-                          </div>
+                            match={m}
+                            p1={mp1}
+                            p2={mp2}
+                            isCurrent={isCur}
+                            isNext={isNxt}
+                            isDone={isDone}
+                            onSelectMatch={setSelectedMatch}
+                            onRemindMatch={setReminderMatch}
+                            compact={true}
+                          />
                         );
                       })}
                     </div>
@@ -972,8 +801,13 @@ export default function MatchesTab({
                   </div>
 
                   <div className="match-opponents" style={{ background: isCurrent ? '#D1FAE5' : (isNext ? '#FEF08A' : 'var(--bg-subtle)') }}>
-                    <div className="match-player p1">
-                      <span className="player-name">{p1?.name || 'مشارك 1'}</span>
+                    <div className="match-player p1" style={{ minWidth: 0, overflow: 'hidden' }}>
+                      <AutoFitName 
+                        text={p1?.name || 'مشارك 1'}
+                        fontWeight={700}
+                        color="var(--text-main)"
+                        align="right"
+                      />
                       <span className="player-team">{p1?.team}</span>
                     </div>
 
@@ -985,8 +819,13 @@ export default function MatchesTab({
                       )}
                     </div>
 
-                    <div className="match-player p2">
-                      <span className="player-name">{p2?.name || 'مشارك 2'}</span>
+                    <div className="match-player p2" style={{ minWidth: 0, overflow: 'hidden' }}>
+                      <AutoFitName 
+                        text={p2?.name || 'مشارك 2'}
+                        fontWeight={700}
+                        color="var(--text-main)"
+                        align="left"
+                      />
                       <span className="player-team">{p2?.team}</span>
                     </div>
                   </div>

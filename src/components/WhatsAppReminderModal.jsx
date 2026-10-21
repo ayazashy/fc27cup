@@ -311,67 +311,71 @@ export default function WhatsAppReminderModal({
           </div>
         </div>
 
-        {/* Modal Sticky Footer - Always Visible on All Screens */}
+        {/* Modal Sticky Footer - Mobile-First & Always Accessible */}
         <div style={{
-          background: 'var(--bg-subtle)',
+          background: '#FFFFFF',
           padding: '12px 16px',
           borderTop: '1px solid var(--border-light)',
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '8px',
+          flexDirection: 'column',
+          gap: '10px',
           flexShrink: 0
         }}>
-          <button 
-            type="button" 
-            className="btn btn-secondary btn-sm" 
-            onClick={onClose}
+          {/* Primary WhatsApp Action Button: Full Width & Prominent */}
+          <a
+            href={activeWhatsAppUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-primary"
+            style={{
+              background: '#25D366',
+              borderColor: '#25D366',
+              color: '#FFFFFF',
+              fontWeight: 800,
+              fontSize: '0.95rem',
+              textDecoration: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              padding: '12px 20px',
+              width: '100%',
+              borderRadius: '10px',
+              boxShadow: '0 4px 12px rgba(37, 211, 102, 0.35)'
+            }}
+            onClick={(e) => {
+              if (!validatePhone(activePhone, activePlayer?.name)) {
+                e.preventDefault();
+              } else if (onNotify) {
+                onNotify(`جاري فتح محادثة واتساب لـ ${activePlayer?.name}! 📲`, 'success');
+              }
+            }}
           >
-            إغلاق
-          </button>
+            <Send size={18} />
+            <span>إرسال التذكير عبر واتساب الآن 📲</span>
+          </a>
 
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {/* Secondary Actions Row */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+            <button 
+              type="button" 
+              className="btn btn-secondary btn-sm" 
+              onClick={onClose}
+              style={{ flex: 1, padding: '7px 12px' }}
+            >
+              إغلاق
+            </button>
+
             <button 
               type="button"
               onClick={handleCopyLink}
               className="btn btn-secondary btn-sm"
               title="نسخ رابط الواتساب"
-              style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem' }}
+              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', padding: '7px 12px', fontSize: '0.8rem' }}
             >
               {copiedLink ? <Check size={14} color="#059669" /> : <Copy size={14} />}
               <span>{copiedLink ? 'تم نسخ الرابط' : 'نسخ الرابط'}</span>
             </button>
-
-            {/* Prominent WhatsApp Green Send Button */}
-            <a
-              href={activeWhatsAppUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn-primary btn-sm"
-              style={{
-                background: '#25D366',
-                borderColor: '#25D366',
-                color: '#FFFFFF',
-                fontWeight: 800,
-                fontSize: '0.85rem',
-                textDecoration: 'none',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '8px 16px',
-                boxShadow: '0 2px 8px rgba(37, 211, 102, 0.35)'
-              }}
-              onClick={(e) => {
-                if (!validatePhone(activePhone, activePlayer?.name)) {
-                  e.preventDefault();
-                } else if (onNotify) {
-                  onNotify(`جاري فتح محادثة واتساب لـ ${activePlayer?.name}! 📲`, 'success');
-                }
-              }}
-            >
-              <Send size={15} />
-              <span>إرسال عبر واتساب 📲</span>
-            </a>
           </div>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { 
   getFirestore, 
+  initializeFirestore,
   doc, 
   setDoc, 
   getDoc, 
@@ -28,7 +29,17 @@ export const defaultFirebaseConfig = _resolveCloudDescriptor();
 
 // Initialize App
 const app = getApps().length === 0 ? initializeApp(defaultFirebaseConfig) : getApp();
-export const db = getFirestore(app);
+
+let firestoreDb;
+try {
+  firestoreDb = initializeFirestore(app, {
+    experimentalAutoDetectLongPolling: true,
+    ignoreUndefinedProperties: true
+  });
+} catch (e) {
+  firestoreDb = getFirestore(app);
+}
+export const db = firestoreDb;
 
 // Tournament Document ID
 export const TOURNAMENT_DOC_ID = "ksu_housing_fc27_main";

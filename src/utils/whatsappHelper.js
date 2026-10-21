@@ -16,7 +16,10 @@ export function formatEstimatedTimeStr(match) {
   if (match.status === 'live') {
     return 'المباراة جارية الآن على الجهاز! يرجى الحضور فوراً 🟢';
   }
-  if (match.estimatedTime && match.estimatedTime.rangeStr) {
+  if (match.fixedSchedule?.timeStr) {
+    return `${match.fixedSchedule.timeStr} (الموعد المقرر)`;
+  }
+  if (match.estimatedTime && match.estimatedTime.rangeStr && match.estimatedTime.rangeStr !== 'مجدولة') {
     return `${match.estimatedTime.rangeStr} (تقريبياً)`;
   }
   return 'المباراة التالية في طابور الجهاز - يرجى التواجد بالصالة للاستعداد ⏳';

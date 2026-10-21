@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Trophy, Award, Medal, ZoomIn, ZoomOut, RotateCcw, ChevronLeft, ChevronRight, Layers, Sliders } from 'lucide-react';
 import ScoreModal from './ScoreModal';
 import confetti from 'canvas-confetti';
+import AutoFitName from './AutoFitName';
 import { propagateWinnerInTree, syncKnockoutTreeWithGuarantees } from '../utils/tournamentEngine';
 
 export default function KnockoutTree({ 
@@ -396,20 +397,16 @@ export default function KnockoutTree({
                             <div style={{ flex: 1, overflow: 'hidden' }}>
                               {p1 ? (
                                 <div>
-                                  <div style={{ 
-                                    fontWeight: isP1Winner ? 800 : 700, 
-                                    fontSize: '0.85rem',
-                                    color: isP1Winner ? '#065F46' : 'var(--text-main)',
-                                    whiteSpace: 'nowrap',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px'
-                                  }}>
-                                    <span>{p1.name}</span>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <AutoFitName 
+                                      text={p1.name}
+                                      compact={true}
+                                      fontWeight={isP1Winner ? 800 : 700}
+                                      color={isP1Winner ? '#065F46' : 'var(--text-main)'}
+                                      align="right"
+                                    />
                                     {m.isGuaranteed1 && (
-                                      <span className="badge badge-green" style={{ fontSize: '0.62rem', padding: '1px 5px', fontWeight: 800 }}>
+                                      <span className="badge badge-green" style={{ fontSize: '0.62rem', padding: '1px 5px', fontWeight: 800, flexShrink: 0 }}>
                                         تأهل مؤكد ✓
                                       </span>
                                     )}
@@ -458,20 +455,16 @@ export default function KnockoutTree({
                             <div style={{ flex: 1, overflow: 'hidden' }}>
                               {p2 ? (
                                 <div>
-                                  <div style={{ 
-                                    fontWeight: isP2Winner ? 800 : 700, 
-                                    fontSize: '0.85rem',
-                                    color: isP2Winner ? '#065F46' : 'var(--text-main)',
-                                    whiteSpace: 'nowrap',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px'
-                                  }}>
-                                    <span>{p2.name}</span>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <AutoFitName 
+                                      text={p2.name}
+                                      compact={true}
+                                      fontWeight={isP2Winner ? 800 : 700}
+                                      color={isP2Winner ? '#065F46' : 'var(--text-main)'}
+                                      align="right"
+                                    />
                                     {m.isGuaranteed2 && (
-                                      <span className="badge badge-green" style={{ fontSize: '0.62rem', padding: '1px 5px', fontWeight: 800 }}>
+                                      <span className="badge badge-green" style={{ fontSize: '0.62rem', padding: '1px 5px', fontWeight: 800, flexShrink: 0 }}>
                                         تأهل مؤكد ✓
                                       </span>
                                     )}

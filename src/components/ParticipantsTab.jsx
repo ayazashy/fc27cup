@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Users, FileSpreadsheet, Trash2, Search, ExternalLink, UserCheck, UserX, Plus, Printer, Download, X } from 'lucide-react';
+import { Users, FileSpreadsheet, Trash2, Search, ExternalLink, Plus, Printer, Download, X, Edit2, Shield, Check } from 'lucide-react';
 import { parseGoogleSheetData, generateSampleKsuParticipants } from '../utils/sheetParser';
+import { POPULAR_TEAMS, getTeamLogoUrl, DEFAULT_UNKNOWN_LOGO } from '../utils/footballTeams';
 
 export default function ParticipantsTab({ 
   participants, 
@@ -10,15 +11,14 @@ export default function ParticipantsTab({
   const [pasteText, setPasteText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingPlayer, setEditingPlayer] = useState(null);
 
-  // New Participant Form State (Strictly useful fields only!)
+  // New Participant Form State
   const [newPlayer, setNewPlayer] = useState({
     name: '',
     studentId: '',
     phone: '',
-    room: '',
-    team: 'ريال مدريد',
-    experience: 'متوسط'
+    team: 'الهلال'
   });
 
   const handleParseAndImport = () => {
@@ -74,22 +74,43 @@ export default function ParticipantsTab({
 
     setParticipants(prev => [created, ...prev]);
     setShowAddModal(false);
-    setNewPlayer({ name: '', studentId: '', phone: '', room: '', team: 'ريال مدريد', experience: 'متوسط' });
+    setNewPlayer({ name: '', studentId: '', phone: '', team: 'ريال مدريد' });
     onNotify(`تمت إضافة اللاعب ${created.name} بنجاح!`, 'success');
   };
 
-  const toggleStatus = (id) => {
+  const handleSaveEditPlayer = (e) => {
+    e.preventDefault();
+    if (!editingPlayer || !editingPlayer.name.trim()) {
+      alert('يرجى إدخال اسم اللاعب');
+      return;
+    }
+
+    let cleanPhone = (editingPlayer.phone || '').replace(/[^\d+]/g, '');
+    if (cleanPhone.startsWith('05')) cleanPhone = '966' + cleanPhone.substring(1);
+
     setParticipants(prev => prev.map(p => {
-      if (p.id === id) {
-        const nextStatus = p.status === 'confirmed' ? 'waiting' : 'confirmed';
-        return { ...p, status: nextStatus };
+      if (p.id === editingPlayer.id) {
+        return {
+          ...p,
+          name: editingPlayer.name.trim(),
+          studentId: editingPlayer.studentId.trim() || p.studentId,
+          phone: cleanPhone || p.phone,
+          displayPhone: editingPlayer.displayPhone || editingPlayer.phone || p.displayPhone,
+          team: editingPlayer.team || p.team
+        };
       }
       return p;
     }));
+
+    onNotify(`تم تحديث بيانات اللاعب ${editingPlayer.name} بنجاح!`, 'success');
+    setEditingPlayer(null);
   };
 
   const removeParticipant = (id) => {
-    setParticipants(prev => prev.filter(p => p.id !== id));
+    if (window.confirm('هل أنت متأكد من حذف هذا المشارك؟')) {
+      setParticipants(prev => prev.filter(p => p.id !== id));
+      onNotify('تم حذف المشارك بنجاح', 'info');
+    }
   };
 
   const handleExportCSV = () => {
@@ -217,18 +238,15 @@ export default function ParticipantsTab({
                   <th>اسم المشارك</th>
                   <th>الرقم الجامعي</th>
                   <th>الجوال / واتساب</th>
-                  <th>السكن (العمارة والغرفة)</th>
-                  <th>النادي المفضل</th>
-                  <th>المستوى</th>
-                  <th>الحالة</th>
-                  <th style={{ textAlign: 'center' }}>إجراء</th>
+                  <th>النادي المختار</th>
+                  <th style={{ textAlign: 'center', width: '100px' }}>إجراءات</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredParticipants.map((p, idx) => (
                   <tr key={p.id}>
                     <td className="numeric" style={{ color: 'var(--text-dim)' }}>{idx + 1}</td>
-                    <td style={{ fontWeight: 700 }}>{p.name}</td>
+                    <td style={{ fontWeight: 800 }}>{p.name}</td>
                     <td className="numeric">{p.studentId}</td>
                     <td>
                       <a
@@ -243,31 +261,36 @@ export default function ParticipantsTab({
                         <span className="numeric">{p.displayPhone || p.phone}</span>
                       </a>
                     </td>
-                    <td>{p.room}</td>
                     <td>
-                      <span className="badge badge-gold">{p.team}</span>
-                    </td>
-                    <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{p.experience}</td>
-                    <td>
-                      <button 
-                        onClick={() => toggleStatus(p.id)}
-                        className={`badge ${p.status === 'confirmed' ? 'badge-green' : 'badge-gray'}`}
-                        style={{ border: 'none', cursor: 'pointer' }}
-                        title="اضغط للتحويل بين مؤكد واحتياط"
-                      >
-                        {p.status === 'confirmed' ? <UserCheck size={12} /> : <UserX size={12} />}
-                        {p.status === 'confirmed' ? 'مؤكد' : 'احتياط'}
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <img 
+                          src={getTeamLogoUrl(p.team)} 
+                          alt={p.team} 
+                          style={{ width: '22px', height: '22px', objectFit: 'contain' }}
+                          onError={(e) => { e.target.src = DEFAULT_UNKNOWN_LOGO; }}
+                        />
+                        <span className="badge badge-gray" style={{ fontWeight: 700 }}>{p.team || 'فريق آخر'}</span>
+                      </div>
                     </td>
                     <td style={{ textAlign: 'center' }}>
-                      <button
-                        className="btn btn-danger btn-sm"
-                        style={{ padding: '4px 8px' }}
-                        onClick={() => removeParticipant(p.id)}
-                        title="حذف المشارك"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: '4px 8px', color: 'var(--ksu-green)' }}
+                          onClick={() => setEditingPlayer({ ...p })}
+                          title="تعديل بيانات المشارك"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button
+                          className="btn btn-danger btn-sm"
+                          style={{ padding: '4px 8px' }}
+                          onClick={() => removeParticipant(p.id)}
+                          title="حذف المشارك"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -282,7 +305,7 @@ export default function ParticipantsTab({
         <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <span style={{ fontWeight: 700, fontSize: '1.05rem' }}>إضافة لاعب جديد يدوياً</span>
+              <span style={{ fontWeight: 800, fontSize: '1.05rem' }}>إضافة لاعب جديد</span>
               <button 
                 style={{ background: 'none', border: 'none', cursor: 'pointer' }}
                 onClick={() => setShowAddModal(false)}
@@ -328,33 +351,109 @@ export default function ParticipantsTab({
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>السكن (العمارة والغرفة):</label>
-                    <input 
-                      type="text" 
-                      className="form-input" 
-                      placeholder="عمارة 15 - غرفة 204"
-                      value={newPlayer.room}
-                      onChange={(e) => setNewPlayer({ ...newPlayer, room: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>النادي المفضل:</label>
-                    <input 
-                      type="text" 
-                      className="form-input" 
-                      placeholder="ريال مدريد / الهلال..."
-                      value={newPlayer.team}
-                      onChange={(e) => setNewPlayer({ ...newPlayer, team: e.target.value })}
-                    />
-                  </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>النادي المختار:</label>
+                  <select 
+                    className="form-select"
+                    value={newPlayer.team}
+                    onChange={(e) => setNewPlayer({ ...newPlayer, team: e.target.value })}
+                  >
+                    {POPULAR_TEAMS.map(t => (
+                      <option key={t.id} value={t.name}>{t.name} ({t.enName})</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={() => setShowAddModal(false)}>إلغاء</button>
                 <button type="submit" className="btn btn-primary">إضافة اللاعب للقائمة</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Player Modal */}
+      {editingPlayer && (
+        <div className="modal-overlay" onClick={() => setEditingPlayer(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <span style={{ fontWeight: 800, fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Edit2 size={18} color="var(--ksu-green)" />
+                <span>تعديل بيانات اللاعب</span>
+              </span>
+              <button 
+                style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+                onClick={() => setEditingPlayer(null)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditPlayer}>
+              <div className="modal-body">
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>اسم اللاعب الكامل: *</label>
+                  <input 
+                    type="text" 
+                    required 
+                    className="form-input" 
+                    value={editingPlayer.name}
+                    onChange={(e) => setEditingPlayer({ ...editingPlayer, name: e.target.value })}
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>الرقم الجامعي:</label>
+                    <input 
+                      type="text" 
+                      className="form-input numeric" 
+                      value={editingPlayer.studentId}
+                      onChange={(e) => setEditingPlayer({ ...editingPlayer, studentId: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>رقم الجوال:</label>
+                    <input 
+                      type="text" 
+                      className="form-input numeric" 
+                      value={editingPlayer.displayPhone || editingPlayer.phone}
+                      onChange={(e) => setEditingPlayer({ ...editingPlayer, phone: e.target.value, displayPhone: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>النادي المختار:</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <img 
+                      src={getTeamLogoUrl(editingPlayer.team)} 
+                      alt={editingPlayer.team} 
+                      style={{ width: '28px', height: '28px', objectFit: 'contain' }}
+                      onError={(e) => { e.target.src = DEFAULT_UNKNOWN_LOGO; }}
+                    />
+                    <select 
+                      className="form-select"
+                      style={{ flex: 1 }}
+                      value={editingPlayer.team}
+                      onChange={(e) => setEditingPlayer({ ...editingPlayer, team: e.target.value })}
+                    >
+                      {POPULAR_TEAMS.map(t => (
+                        <option key={t.id} value={t.name}>{t.name} ({t.enName})</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setEditingPlayer(null)}>إلغاء</button>
+                <button type="submit" className="btn btn-primary">
+                  <Check size={16} />
+                  <span>حفظ التعديلات</span>
+                </button>
               </div>
             </form>
           </div>

@@ -3,6 +3,7 @@ import { Tv, Monitor, Maximize2, Minimize2, Trophy, Clock, Volume2, Award, Searc
 import { calculateGroupStandings, getConsoleStatusMap } from '../utils/tournamentEngine';
 import KnockoutTree from './KnockoutTree';
 import SyncLoadingOverlay from './SyncLoadingOverlay';
+import SportsMatchCard from './SportsMatchCard';
 import logoUrl from '../utils/logo';
 
 export default function TvDisplayTab({ 
@@ -84,8 +85,8 @@ export default function TvDisplayTab({
 
   const consolesCount = Number(config.consolesCount) || 5;
   const consoleStatusMap = React.useMemo(() => {
-    return getConsoleStatusMap(tvDayMatches, consolesCount, minDuration, maxDuration, isTvDayActive);
-  }, [tvDayMatches, consolesCount, minDuration, maxDuration, isTvDayActive, timeTick]);
+    return getConsoleStatusMap(tvDayMatches, consolesCount, minDuration, maxDuration, isTvDayActive, config);
+  }, [tvDayMatches, consolesCount, minDuration, maxDuration, isTvDayActive, config, timeTick]);
 
   // Auto-rotate tabs for projector display (18 seconds per tab)
   useEffect(() => {
@@ -243,26 +244,28 @@ export default function TvDisplayTab({
 
         {/* Search Result Banner */}
         {searchResult && (
-          <div style={{ marginTop: '10px', padding: '10px 14px', background: '#FFFFFF', borderRadius: '8px', border: '1px solid #86EFAC' }}>
+          <div style={{ marginTop: '10px', padding: '12px 14px', background: '#FFFFFF', borderRadius: '8px', border: '1px solid #86EFAC' }}>
             {searchResult.found ? (
               <div>
-                <span style={{ fontWeight: 800, color: 'var(--text-main)' }}>
+                <div style={{ fontWeight: 800, color: 'var(--text-main)', marginBottom: '8px' }}>
                   أهلاً {searchResult.player.name} ({searchResult.player.team}):
-                </span>
+                </div>
                 {searchResult.nextMatch ? (
-                  <div style={{ marginTop: '4px' }}>
-                    <div style={{ color: '#065F46', fontWeight: 600, fontSize: '0.875rem' }}>
-                      مباراتك القادمة ضد <b>{participantsMap[searchResult.nextMatch.player1Id === searchResult.player.id ? searchResult.nextMatch.player2Id : searchResult.nextMatch.player1Id]?.name}</b> على <b>جهاز {searchResult.nextMatch.consoleId}</b> — اليوم {searchResult.nextMatch.dayNumber || 1} (#{searchResult.nextMatch.matchNumber})
+                  <div>
+                    <div style={{ color: '#065F46', fontWeight: 600, fontSize: '0.85rem', marginBottom: '8px' }}>
+                      مباراتك القادمة على <b>جهاز {searchResult.nextMatch.consoleId}</b> — اليوم {searchResult.nextMatch.dayNumber || 1} (#{searchResult.nextMatch.matchNumber}):
                     </div>
-                    {searchResult.nextMatchWithEst?.estimatedTime && (
-                      <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px', background: '#ECFDF5', border: '1px solid #10B981', padding: '6px 10px', borderRadius: '6px', fontSize: '0.82rem', fontWeight: 700, color: '#065F46' }}>
-                        <Clock size={15} color="#059669" />
-                        <span>الموعد المتوقع: {searchResult.nextMatchWithEst.estimatedTime.rangeStr} تقريباً</span>
-                      </div>
-                    )}
+                    <SportsMatchCard 
+                      match={searchResult.nextMatchWithEst || searchResult.nextMatch}
+                      p1={participantsMap[searchResult.nextMatch.player1Id]}
+                      p2={participantsMap[searchResult.nextMatch.player2Id]}
+                      isCurrent={searchResult.nextMatch.status === 'in_progress'}
+                      compact={false}
+                      isPublicMode={isPublicMode}
+                    />
                   </div>
                 ) : (
-                  <div style={{ color: 'var(--text-muted)', marginTop: '4px', fontSize: '0.85rem' }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                     أكملت جميع مبارياتك المقررة حالياً ✓
                   </div>
                 )}
@@ -356,63 +359,60 @@ export default function TvDisplayTab({
                     borderRadius: '10px', 
                     padding: '12px' 
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                      <span style={{ fontWeight: 800, fontSize: '0.8rem', color: current ? '#065F46' : 'var(--text-muted)' }}>
-                        🟢 الجارية الآن على الجهاز:
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <span style={{ fontWeight: 800, fontSize: '0.85rem', color: current ? '#065F46' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: current ? '#10B981' : '#CBD5E1', display: 'inline-block' }}></span>
+                        {current ? 'الجارية الآن على الجهاز' : 'لا توجد مباراة نشطة'}
                       </span>
-                      {current && <span className="badge badge-green">مباراة #{current.matchNumber}</span>}
-                    </div>
-
-                  {current ? (
-                    <div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                        {current.groupName} — جولة {current.roundNumber || 1}
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0' }}>
-                        <div>
-                          <div style={{ fontWeight: 800, fontSize: '0.95rem' }}>{p1?.name}</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{p1?.team}</div>
-                        </div>
-
-                        <div className="numeric" style={{ fontWeight: 900, fontSize: '1.25rem', color: 'var(--ksu-green)' }}>
-                          {current.score1 !== null ? `${current.score1} : ${current.score2}` : 'ضد'}
-                        </div>
-
-                        <div style={{ textAlign: 'left' }}>
-                          <div style={{ fontWeight: 800, fontSize: '0.95rem' }}>{p2?.name}</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{p2?.team}</div>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ textAlign: 'center', padding: '16px 0', color: 'var(--text-dim)', fontSize: '0.85rem' }}>
-                      الجهاز متاح وجاهز للاستقبال ✓
-                    </div>
-                  )}
-                </div>
-              )}
-
-                {/* NEXT MATCH (التالي للاستعداد) */}
-                {isTvDayActive && next && (
-                  <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: '8px', padding: '10px 12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                      <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#92400E' }}>
-                        🟡 التالي للاستعداد في القاعة:
-                      </div>
-                      {next.estimatedTime && (
-                        <span className="badge badge-gold numeric" style={{ fontSize: '0.72rem', fontWeight: 800 }}>
-                          🕒 {next.estimatedTime.rangeStr}
+                      {current && (
+                        <span className="badge badge-green" style={{ fontWeight: 800, fontSize: '0.75rem' }}>
+                          #{current.matchNumber} {current.groupName || ''}
                         </span>
                       )}
                     </div>
-                    <div style={{ fontWeight: 800, fontSize: '0.88rem' }}>
-                      {nextP1?.name} ضد {nextP2?.name}
+
+                    {current ? (
+                      <SportsMatchCard 
+                        match={current}
+                        p1={p1}
+                        p2={p2}
+                        isCurrent={true}
+                        isPublicMode={isPublicMode}
+                        compact={false}
+                      />
+                    ) : (
+                      <div style={{ textAlign: 'center', padding: '16px 0', color: 'var(--text-dim)', fontSize: '0.85rem' }}>
+                        الجهاز متاح وجاهز للاستقبال ✓
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* NEXT MATCH (التالي للاستعداد) */}
+                {isTvDayActive && next && (
+                  <div style={{ 
+                    background: '#FEF9C3', 
+                    border: '1.5px solid #CA8A04', 
+                    borderRadius: '10px', 
+                    padding: '10px 12px',
+                    boxShadow: '0 2px 6px rgba(202, 138, 4, 0.08)'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#854D0E', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#EAB308', display: 'inline-block' }}></span>
+                        التالية للاستعداد:
+                      </span>
+                      <span className="badge badge-gold" style={{ fontSize: '0.7rem' }}>#{next.matchNumber} {next.groupName || ''}</span>
                     </div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                              <b style={{ color: 'var(--ksu-green)', marginLeft: '4px' }}>[اليوم {next.dayNumber || 1}]</b>
-                      مباراة #{next.matchNumber} {next.groupName} — جولة {next.roundNumber || 1}
-                    </div>
+
+                    <SportsMatchCard 
+                      match={next}
+                      p1={nextP1}
+                      p2={nextP2}
+                      isNext={true}
+                      compact={true}
+                      isPublicMode={isPublicMode}
+                    />
                   </div>
                 )}
 
@@ -422,68 +422,30 @@ export default function TvDisplayTab({
                     قائمة مباريات الجهاز بالترتيب الكامل:
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '380px', overflowY: 'auto' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '380px', overflowY: 'auto', paddingRight: '2px' }}>
                     {cData.matches.map((m, idx) => {
-                      const isCur = current && current.id === m.id;
-                      const isNext = next && next.id === m.id;
+                      const isCur = isTvDayActive && current && current.id === m.id;
+                      const isNext = isTvDayActive && next && next.id === m.id;
                       const isDone = m.status === 'completed' || m.status === 'walkover';
                       const mp1 = participantsMap[m.player1Id];
                       const mp2 = participantsMap[m.player2Id];
 
                       return (
-                        <div 
-                          key={m.id}
-                          style={{
-                            padding: '8px 10px',
-                            background: isCur ? '#ECFDF5' : (isNext ? '#FEF9C3' : (isDone ? '#F1F5F9' : '#FFFFFF')),
-                            border: `1.5px solid ${isCur ? '#059669' : (isNext ? '#CA8A04' : (isDone ? '#CBD5E1' : 'var(--border-light)'))}`,
-                            borderRadius: '6px',
-                            fontSize: '0.8rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            opacity: isDone ? 0.7 : 1
-                          }}
-                        >
-                          <div style={{ overflow: 'hidden' }}>
-                            <span className="numeric" style={{ fontWeight: 800, color: 'var(--text-dim)', marginLeft: '6px' }}>
-                              #{idx + 1}
-                            </span>
-                            <span style={{ fontWeight: isCur ? 800 : 700 }}>
-                              {mp1?.name} ضد {mp2?.name}
-                            </span>
-                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                              مباراة #{m.matchNumber} {m.groupName}
-                            </div>
-                          </div>
-
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                            {m.estimatedTime && !isDone && !isCur && (
-                              <span 
-                                className="numeric"
-                                style={{
-                                  fontSize: '0.72rem',
-                                  color: '#475569',
-                                  background: '#F8FAFC',
-                                  border: '1px solid #E2E8F0',
-                                  padding: '2px 6px',
-                                  borderRadius: '4px',
-                                  fontWeight: 700
-                                }}
-                                title="الوقت التقديري المتوقع لبدء المباراة (hh:mm - hh:mm)"
-                              >
-                                🕒 {m.estimatedTime.rangeStr}
-                              </span>
-                            )}
-                            {isDone ? (
-                              <span className="numeric" style={{ fontWeight: 800, color: '#059669', fontSize: '0.85rem' }}>
-                                {m.score1} : {m.score2} ✓
-                              </span>
-                            ) : (
-                              <span className={`badge ${isCur ? 'badge-green' : (isNext ? 'badge-gold' : 'badge-gray')}`}>
-                                {isCur ? 'الآن' : (isNext ? 'التالي' : 'مجدول')}
-                              </span>
-                            )}
+                        <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span className="numeric" style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-dim)', minWidth: '22px' }}>
+                            #{idx + 1}
+                          </span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <SportsMatchCard 
+                              match={m}
+                              p1={mp1}
+                              p2={mp2}
+                              isCurrent={isCur}
+                              isNext={isNext}
+                              isDone={isDone}
+                              compact={true}
+                              isPublicMode={isPublicMode}
+                            />
                           </div>
                         </div>
                       );

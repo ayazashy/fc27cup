@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Lock, Unlock, Eye, EyeOff, ShieldCheck, AlertCircle, ArrowLeft, KeyRound } from 'lucide-react';
-import { verifyAndDecodeKey, storeAdminKey } from '../utils/securityGate';
+import { verifyAndDecodeKey, storeAdminKey, storeAdminRole } from '../utils/securityGate';
 import logoUrl from '../utils/logo';
 
 export default function AdminLockScreen({
   onUnlockSuccess,
-  onGoToPublic
+  onGoToPublic,
+  config = {}
 }) {
   const [inputKey, setInputKey] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -15,7 +16,7 @@ export default function AdminLockScreen({
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!inputKey.trim()) {
-      setErrorMessage('يرجى إدخال مفتاح فك التشفير.');
+      setErrorMessage('يرجى إدخال رمز الدخول أو مفتاح فك التشفير.');
       return;
     }
 
@@ -23,18 +24,18 @@ export default function AdminLockScreen({
     setErrorMessage('');
 
     try {
-      // Attempt AES-256-GCM Web Crypto decryption with the provided key
-      const result = await verifyAndDecodeKey(inputKey);
+      const result = await verifyAndDecodeKey(inputKey, config);
 
       if (result.success && result.payload) {
-        // Save key in localStorage so subsequent visits open directly
+        const role = result.role || 'master_admin';
         storeAdminKey(inputKey.trim());
-        onUnlockSuccess(result.payload, inputKey.trim());
+        storeAdminRole(role);
+        onUnlockSuccess(result.payload, inputKey.trim(), role);
       } else {
-        setErrorMessage('❌ مفتاح فك التشفير غير صحيح! فشلت محاولة فك تشفير لوحة الإدارة.');
+        setErrorMessage('❌ رمز الدخول أو مفتاح فك التشفير غير صحيح!');
       }
     } catch (err) {
-      setErrorMessage('❌ حدث خطأ أثناء محاولة فك التشفير. يرجى المحاولة مجدداً.');
+      setErrorMessage('❌ حدث خطأ أثناء التحقق من الرمز. يرجى المحاولة مجدداً.');
     } finally {
       setIsDecoding(false);
     }
@@ -131,7 +132,7 @@ export default function AdminLockScreen({
           lineHeight: 1.5,
           marginBottom: '24px'
         }}>
-          الصفحة مشفرة بالكامل. يرجى إدخال مفتاح فك التشفير للوصول إلى لوحة الإدارة والتحكم.
+          بوابة الكوادر الإدارية والتنظيمية. أدخل رمز منظم الصالة أو مفتاح المدير العام.
         </p>
 
         {/* Error Alert Box */}
@@ -165,7 +166,7 @@ export default function AdminLockScreen({
                 setInputKey(e.target.value);
                 if (errorMessage) setErrorMessage('');
               }}
-              placeholder="أدخل مفتاح فك التشفير..."
+              placeholder="رمز منظم الصالة أو مفتاح المدير..."
               disabled={isDecoding}
               autoFocus
               className="form-input"
