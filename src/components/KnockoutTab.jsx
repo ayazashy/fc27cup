@@ -72,11 +72,8 @@ export default function KnockoutTab({
           <div>
             <div className="card-title">
               <GitMerge size={20} color="var(--ksu-green)" />
-              <span>شجرة أدوار خروج المغلوب (Knockout Bracket Tree)</span>
+              <span>أدوار خروج المغلوب</span>
             </div>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-              شجرة إقصائيات متصلة ديناميكياً مع تصعيد فوري وتلقائي للفائزين حتى النهائي
-            </p>
           </div>
 
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -88,7 +85,7 @@ export default function KnockoutTab({
                 onClick={() => setViewMode('tree')}
               >
                 <GitMerge size={14} />
-                عرض الشجرة (Tree)
+                شجرة الأدوار
               </button>
               <button 
                 className={`btn btn-sm ${viewMode === 'cards' ? 'btn-primary' : 'btn-secondary'}`}
@@ -96,7 +93,7 @@ export default function KnockoutTab({
                 onClick={() => setViewMode('cards')}
               >
                 <LayoutGrid size={14} />
-                عرض البطاقات
+                قائمة المباريات
               </button>
             </div>
 

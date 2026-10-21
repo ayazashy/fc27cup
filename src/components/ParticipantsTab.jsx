@@ -133,15 +133,15 @@ export default function ParticipantsTab({
         <div className="card-header">
           <div className="card-title">
             <FileSpreadsheet size={20} color="var(--ksu-green)" />
-            <span>استيراد المشاركين من Google Sheet</span>
+            <span>قائمة واستيراد المشاركين</span>
           </div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <button className="btn btn-secondary btn-sm" onClick={handleLoadSample}>
-              تحميل بيانات تجريبية (32 لاعب)
+              بيانات تجريبية
             </button>
             <button className="btn btn-primary btn-sm" onClick={() => setShowAddModal(true)}>
               <Plus size={16} />
-              إضافة لاعب يدوياً
+              إضافة لاعب
             </button>
             {participants.length > 0 && (
               <>
@@ -162,8 +162,8 @@ export default function ParticipantsTab({
           </div>
         </div>
 
-        <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '12px' }}>
-          انسخ الأعمدة والصفوف مباشرة من ملف Google Sheet أو ردود استبانة Google Form والصقها هنا:
+        <p style={{ fontSize: '0.825rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
+          الصق بيانات المشاركين من Google Sheet أو أضفهم يدوياً:
         </p>
 
         <textarea

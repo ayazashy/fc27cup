@@ -48,10 +48,10 @@ export default function Header({
           />
           <div className="brand-text">
             <h1>
-              <Trophy size={22} style={{ color: 'var(--trophy-gold)' }} />
+              <Trophy size={20} style={{ color: 'var(--trophy-gold)' }} />
               كأس السكن: FC27
             </h1>
-            <p>إدارة سكن الطلاب — الأنشطة الطلابية | جامعة الملك سعود</p>
+            <p>سكن الطلاب — جامعة الملك سعود</p>
           </div>
         </div>
 

@@ -20,7 +20,8 @@ import {
   CheckCircle2, 
   AlertCircle,
   ExternalLink,
-  Share2
+  Share2,
+  RefreshCw
 } from 'lucide-react';
 import { 
   saveTournamentToFirestore, 
@@ -41,6 +42,9 @@ import {
 } from './utils/securityGate';
 
 const STORAGE_KEY = 'ksu_fc27_tournament_state_v1';
+const PUBLIC_REFRESH_INTERVAL_SECS = 120; // 2 minutes rate limit
+const STORAGE_NEXT_REFRESH_KEY = 'fc27_public_next_refresh_at';
+const STORAGE_LAST_REFRESH_KEY = 'fc27_public_last_refresh_at';
 
 const todayIso = new Date().toISOString().slice(0, 10);
 const tomorrowIso = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
@@ -67,12 +71,61 @@ const DEFAULT_CONFIG = {
   forfeitScoreLoser: 0
 };
 
+// Helper: Read tournament cache synchronously from localStorage on initial load
+function getInitialTournamentData() {
+  try {
+    const cached = localStorage.getItem(STORAGE_KEY);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed && typeof parsed === 'object') {
+        return {
+          participants: Array.isArray(parsed.participants) ? parsed.participants : [],
+          groups: Array.isArray(parsed.groups) ? parsed.groups : [],
+          matches: Array.isArray(parsed.matches) ? parsed.matches : [],
+          config: (parsed.config && typeof parsed.config === 'object')
+            ? { ...DEFAULT_CONFIG, ...parsed.config }
+            : DEFAULT_CONFIG
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('Initial localStorage tournament cache read error:', e);
+  }
+  return {
+    participants: [],
+    groups: [],
+    matches: [],
+    config: DEFAULT_CONFIG
+  };
+}
+
+// Helper: Read remaining countdown seconds synchronously from localStorage
+function getInitialTimerRemaining() {
+  try {
+    const storedNext = localStorage.getItem(STORAGE_NEXT_REFRESH_KEY);
+    if (storedNext) {
+      const nextTime = Number(storedNext);
+      if (!isNaN(nextTime)) {
+        const remaining = Math.ceil((nextTime - Date.now()) / 1000);
+        if (remaining > 0 && remaining <= PUBLIC_REFRESH_INTERVAL_SECS) {
+          return remaining;
+        }
+      }
+    }
+  } catch (e) {}
+  return PUBLIC_REFRESH_INTERVAL_SECS;
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('participants');
-  const [participants, setParticipants] = useState([]);
-  const [groups, setGroups] = useState([]);
-  const [matches, setMatches] = useState([]);
-  const [config, setConfig] = useState(DEFAULT_CONFIG);
+
+  // Synchronous lazy state initialization from localStorage (prevents empty array wipe on reload)
+  const initialTournamentData = React.useMemo(() => getInitialTournamentData(), []);
+  const [participants, setParticipants] = useState(() => initialTournamentData.participants);
+  const [groups, setGroups] = useState(() => initialTournamentData.groups);
+  const [matches, setMatches] = useState(() => initialTournamentData.matches);
+  const [config, setConfig] = useState(() => initialTournamentData.config);
+
   const [firestoreStatus, setFirestoreStatus] = useState({ connected: false, error: null });
   const [isSaving, setIsSaving] = useState(false);
   const [notification, setNotification] = useState(null);
@@ -88,6 +141,10 @@ export default function App() {
   const [adminSecretCode, setAdminSecretCode] = useState(null);
   const [isCheckingStoredKey, setIsCheckingStoredKey] = useState(true);
 
+  // Public Rate Limit Timer & Share state (persisted across reloads)
+  const [publicTimerSeconds, setPublicTimerSeconds] = useState(getInitialTimerRemaining);
+  const [copiedShareLink, setCopiedShareLink] = useState(false);
+
   const showNotification = (message, type = 'info') => {
     setNotification({ message, type });
     setTimeout(() => {
@@ -95,7 +152,7 @@ export default function App() {
     }, 4000);
   };
 
-  // 1. Initial Load: Check stored key, load local cache, and subscribe to Firestore
+  // 1. Initial Load: Check stored key, handle rate-limited public sync vs admin subscription
   useEffect(() => {
     // Check if key is already saved in localStorage and can decode successfully
     const checkStoredKey = async () => {
@@ -122,36 +179,64 @@ export default function App() {
     };
     window.addEventListener('popstate', handleLocationChange);
 
-    try {
-      const cached = localStorage.getItem(STORAGE_KEY);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (parsed.participants) setParticipants(parsed.participants);
-        if (parsed.groups) setGroups(parsed.groups);
-        if (parsed.matches) setMatches(parsed.matches);
-        if (parsed.config) setConfig(parsed.config);
-      }
-    } catch (e) {
-      console.warn('Local cache read error:', e);
-    }
+    let unsubscribe = null;
 
-    // Subscribe to Firestore updates
-    const unsubscribe = subscribeToTournament(
-      (data) => {
-        if (data) {
-          if (data.participants) setParticipants(data.participants);
-          if (data.groups) setGroups(data.groups);
-          if (data.matches) setMatches(data.matches);
-          if (data.config) setConfig(data.config);
-          setFirestoreStatus({ connected: true, error: null });
+    if (isAdminRoute) {
+      // ADMIN ROUTE: Live realtime Firestore subscription
+      unsubscribe = subscribeToTournament(
+        (data) => {
+          if (data) {
+            if (Array.isArray(data.participants)) setParticipants(data.participants);
+            if (Array.isArray(data.groups)) setGroups(data.groups);
+            if (Array.isArray(data.matches)) setMatches(data.matches);
+            if (data.config && typeof data.config === 'object') setConfig(data.config);
+            setFirestoreStatus({ connected: true, error: null });
+          }
+          setIsInitialLoading(false);
+        },
+        (err) => {
+          setFirestoreStatus({ connected: false, error: err?.message || 'Firestore connection issue' });
+          setIsInitialLoading(false);
         }
+      );
+    } else {
+      // PUBLIC ROUTE: Rate-limited reads using 2-minute cooldown in localStorage
+      const now = Date.now();
+      const storedNext = localStorage.getItem(STORAGE_NEXT_REFRESH_KEY);
+      const nextTime = storedNext ? Number(storedNext) : 0;
+      const isExpired = !storedNext || isNaN(nextTime) || now >= nextTime;
+
+      const performPublicFetch = async () => {
+        try {
+          const data = await loadTournamentFromFirestore();
+          if (data) {
+            if (Array.isArray(data.participants)) setParticipants(data.participants);
+            if (Array.isArray(data.groups)) setGroups(data.groups);
+            if (Array.isArray(data.matches)) setMatches(data.matches);
+            if (data.config && typeof data.config === 'object') setConfig(data.config);
+            setFirestoreStatus({ connected: true, error: null });
+          }
+        } catch (err) {
+          console.warn('Initial public fetch error:', err);
+        } finally {
+          setIsInitialLoading(false);
+        }
+      };
+
+      if (isExpired) {
+        // Cooldown expired or first visit: fetch fresh data & reset 2-minute cycle
+        performPublicFetch();
+        const newNext = now + (PUBLIC_REFRESH_INTERVAL_SECS * 1000);
+        localStorage.setItem(STORAGE_NEXT_REFRESH_KEY, String(newNext));
+        localStorage.setItem(STORAGE_LAST_REFRESH_KEY, String(now));
+        setPublicTimerSeconds(PUBLIC_REFRESH_INTERVAL_SECS);
+      } else {
+        // Within cooldown: DO NOT make a network request! Instant render from local cache
         setIsInitialLoading(false);
-      },
-      (err) => {
-        setFirestoreStatus({ connected: false, error: err?.message || 'Firestore connection issue' });
-        setIsInitialLoading(false);
+        const remainingSecs = Math.max(1, Math.ceil((nextTime - now) / 1000));
+        setPublicTimerSeconds(remainingSecs);
       }
-    );
+    }
 
     // Fallback timer so loading overlay doesn't hang if offline
     const initialLoadingTimer = setTimeout(() => {
@@ -161,11 +246,50 @@ export default function App() {
     return () => {
       window.removeEventListener('popstate', handleLocationChange);
       if (typeof unsubscribe === 'function') unsubscribe();
+      clearTimeout(initialLoadingTimer);
     };
-  }, []);
+  }, [isAdminRoute]);
 
-  // 2. Persist to local storage on changes
+  // Public 2-minute Countdown Interval with Auto-Refresh & LocalStorage Tracking
   useEffect(() => {
+    if (isAdminRoute) return;
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const storedNext = localStorage.getItem(STORAGE_NEXT_REFRESH_KEY);
+      let nextTime = storedNext ? Number(storedNext) : 0;
+
+      // Initialize next refresh timestamp if not present
+      if (!nextTime || isNaN(nextTime)) {
+        nextTime = now + (PUBLIC_REFRESH_INTERVAL_SECS * 1000);
+        localStorage.setItem(STORAGE_NEXT_REFRESH_KEY, String(nextTime));
+        localStorage.setItem(STORAGE_LAST_REFRESH_KEY, String(now));
+      }
+
+      const remaining = Math.ceil((nextTime - now) / 1000);
+
+      if (remaining <= 0) {
+        // Timer reached 0! Advance 2-minute cycle and trigger background update
+        const newNext = Date.now() + (PUBLIC_REFRESH_INTERVAL_SECS * 1000);
+        localStorage.setItem(STORAGE_NEXT_REFRESH_KEY, String(newNext));
+        localStorage.setItem(STORAGE_LAST_REFRESH_KEY, String(Date.now()));
+        setPublicTimerSeconds(PUBLIC_REFRESH_INTERVAL_SECS);
+        handleRefreshData(true); // silent auto-refresh
+      } else {
+        setPublicTimerSeconds(remaining);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isAdminRoute]);
+
+  // 2. Persist to local storage on changes (guarded against empty overwrite on initial mount)
+  const isInitialMount = React.useRef(true);
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         participants,
@@ -245,24 +369,44 @@ export default function App() {
     }
   };
 
-  const handleRefreshData = async () => {
+  const handleRefreshData = async (isSilent = false) => {
     setIsSyncing(true);
-    setSyncMessage('جاري تنزيل أحدث بيانات البطولة من السحابة...');
+    setSyncMessage('جاري تنزيل أحدث بيانات البطولة...');
     try {
       const data = await loadTournamentFromFirestore();
       if (data) {
-        if (data.participants) setParticipants(data.participants);
-        if (data.groups) setGroups(data.groups);
-        if (data.matches) setMatches(data.matches);
-        if (data.config) setConfig(data.config);
+        if (Array.isArray(data.participants)) setParticipants(data.participants);
+        if (Array.isArray(data.groups)) setGroups(data.groups);
+        if (Array.isArray(data.matches)) setMatches(data.matches);
+        if (data.config && typeof data.config === 'object') setConfig(data.config);
         setFirestoreStatus({ connected: true, error: null });
-        showNotification('تم تحديث وتحميل أحدث البيانات من السحابة بنجاح! ⚡', 'success');
+        if (!isSilent) {
+          showNotification('تم تحديث البيانات بنجاح! ⚡', 'success');
+        }
       }
     } catch (e) {
       console.warn('Refresh error:', e);
     } finally {
-      setTimeout(() => setIsSyncing(false), 500);
+      setTimeout(() => setIsSyncing(false), 450);
     }
+  };
+
+  const formatTimerSecs = (sec) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  const handlePublicRefreshClick = () => {
+    if (publicTimerSeconds > 0) {
+      showNotification(`التحديث التلقائي يعمل كل دقيقتين (المتبقي: ${formatTimerSecs(publicTimerSeconds)})`, 'info');
+      return;
+    }
+    const newNext = Date.now() + (PUBLIC_REFRESH_INTERVAL_SECS * 1000);
+    localStorage.setItem(STORAGE_NEXT_REFRESH_KEY, String(newNext));
+    localStorage.setItem(STORAGE_LAST_REFRESH_KEY, String(Date.now()));
+    setPublicTimerSeconds(PUBLIC_REFRESH_INTERVAL_SECS);
+    handleRefreshData(false);
   };
 
   // 4. Save to Firebase Firestore
@@ -325,34 +469,107 @@ export default function App() {
 
   const completedMatchesCount = matches.filter(m => m.status === 'completed' || m.status === 'walkover').length;
 
-  // 6. IF NOT ON ADMIN ROUTE (/KSUHTSTAFF): Render dedicated student spectator portal
+  // 6. IF NOT ON ADMIN ROUTE (/KSUHTSTAFF): Render dedicated student spectator portal with single unified header
   if (!isAdminRoute) {
     return (
       <div className="app-layout" style={{ background: '#F8FAFC' }}>
-        {/* Public Top Bar */}
-        <header style={{ background: '#FFFFFF', borderBottom: '1px solid var(--border-light)', padding: '12px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <img src={logoUrl} alt="شعار كأس السكن FC27" style={{ height: '42px', width: 'auto', objectFit: 'contain' }} />
+        {/* Single Unified Public Header */}
+        <header className="public-header" style={{
+          background: '#FFFFFF',
+          borderBottom: '1px solid var(--border-light)',
+          padding: '12px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+          position: 'sticky',
+          top: 0,
+          zIndex: 40,
+          boxShadow: 'var(--shadow-sm)'
+        }}>
+          {/* Brand */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <img 
+              src={logoUrl} 
+              alt="شعار كأس السكن FC27" 
+              style={{ height: '42px', width: 'auto', objectFit: 'contain' }} 
+            />
             <div>
-              <h1 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--ksu-green)' }}>
-                بوابة متابعة مباريات كأس السكن FC27 — سكن طلاب KSU
+              <h1 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--ksu-green)', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Trophy size={18} style={{ color: 'var(--trophy-gold)' }} />
+                كأس السكن: FC27
               </h1>
-              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                بث مباشر لجداول الصالة والأجهزة والنتائج المحدثة لحظياً
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
+                سكن الطلاب — جامعة الملك سعود
               </p>
             </div>
           </div>
 
-          <button 
-            className="btn btn-secondary btn-sm"
-            onClick={handleNavigateToAdmin}
-            style={{ fontWeight: 700 }}
-          >
-            لوحة الإدارة والتحكم (/KSUHTSTAFF)
-          </button>
+          {/* Action Bar */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {/* 2-Minute Rate-Limited Update Timer Button */}
+            <button
+              className="btn btn-secondary btn-sm public-refresh-btn"
+              onClick={handlePublicRefreshClick}
+              disabled={isSyncing}
+              title={`تحديث تلقائي كل دقيقتين (المتبقي: ${formatTimerSecs(publicTimerSeconds)})`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontWeight: 700,
+                fontSize: '0.8rem',
+                borderColor: publicTimerSeconds <= 10 ? '#10B981' : 'var(--border-light)',
+                background: publicTimerSeconds <= 10 ? '#ECFDF5' : '#FFFFFF',
+                color: publicTimerSeconds <= 10 ? '#065F46' : 'var(--text-main)',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <RefreshCw 
+                size={14} 
+                style={{ 
+                  animation: isSyncing ? 'spinOverlayRing 0.8s linear infinite' : 'none',
+                  color: isSyncing ? 'var(--ksu-green)' : 'currentColor'
+                }} 
+              />
+              {isSyncing ? (
+                <span>جاري التحديث...</span>
+              ) : (
+                <span>تحديث بعد {formatTimerSecs(publicTimerSeconds)}</span>
+              )}
+            </button>
+
+            {/* Share Public Link */}
+            <button 
+              className="btn btn-secondary btn-sm"
+              onClick={() => {
+                const url = window.location.origin + window.location.pathname;
+                navigator.clipboard.writeText(url);
+                setCopiedShareLink(true);
+                setTimeout(() => setCopiedShareLink(false), 2500);
+                showNotification('تم نسخ رابط البطولة لمشاركته!', 'success');
+              }}
+              title="مشاركة رابط البطولة"
+              style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+            >
+              {copiedShareLink ? <CheckCircle2 size={14} color="#10B981" /> : <Share2 size={14} />}
+              <span className="hide-on-mobile">{copiedShareLink ? 'تم النسخ!' : 'مشاركة'}</span>
+            </button>
+
+            {/* Admin Entry Button */}
+            <button 
+              className="btn btn-secondary btn-sm"
+              onClick={handleNavigateToAdmin}
+              style={{ fontWeight: 600, fontSize: '0.78rem' }}
+              title="لوحة الإدارة للمنظمين"
+            >
+              لوحة الإدارة 🔒
+            </button>
+          </div>
         </header>
 
-        <main className="main-content" style={{ padding: '20px' }}>
+        <main className="main-content" style={{ padding: '16px' }}>
           <TvDisplayTab
             matches={matches}
             groups={groups}
@@ -368,8 +585,8 @@ export default function App() {
         {/* Public Circular Loading Overlay with Competition Logo */}
         <SyncLoadingOverlay 
           show={isSyncing || (isInitialLoading && matches.length === 0)}
-          message={isInitialLoading && matches.length === 0 ? "جاري تنزيل وتحميل بيانات البث المباشر..." : syncMessage}
-          subtext="بث حي ومباشر — كأس السكن FC27 | جامعة الملك سعود"
+          message={isInitialLoading && matches.length === 0 ? "جاري تنزيل بيانات البطولة..." : syncMessage}
+          subtext=""
         />
       </div>
     );
@@ -483,7 +700,7 @@ export default function App() {
             onClick={() => setActiveTab('days')}
           >
             <CalendarDays size={18} />
-            <span>جدولة الأيام (X Days)</span>
+            <span>جدول الأيام</span>
           </button>
 
           <button 
@@ -499,7 +716,7 @@ export default function App() {
             onClick={() => setActiveTab('tv')}
           >
             <Tv size={18} />
-            <span>شاشة صالة التلفزيون</span>
+            <span>شاشة الصالة</span>
           </button>
 
           <button 
@@ -613,7 +830,7 @@ export default function App() {
       <SyncLoadingOverlay 
         show={isSyncing}
         message={syncMessage}
-        subtext="حماية فورية لمنع تداخل وتعارض تعديلات المشرفين"
+        subtext=""
       />
     </div>
   );

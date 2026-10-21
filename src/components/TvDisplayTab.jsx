@@ -162,90 +162,48 @@ export default function TvDisplayTab({
 
   return (
     <div className="tab-content" style={{ maxWidth: '100%' }}>
-      {/* Top Header Bar */}
-      <div className="clean-card" style={{ padding: '16px 20px', marginBottom: '16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <img 
-              src={logoUrl} 
-              alt="شعار كأس السكن FC27" 
-              style={{ height: '48px', width: 'auto', objectFit: 'contain' }}
-            />
-            <div>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--ksu-green)' }}>
-                صالة التلفزيون — البث والمتابعة المباشرة
-              </h2>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                متابعة لحظية لطوابير الأجهزة الخمسة وجداول المجموعات وشجرة الإقصائيات
-              </p>
-            </div>
+      {/* View Navigation & Controls Bar */}
+      <div className="clean-card tv-nav-bar" style={{ padding: '10px 16px', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+          {/* View Selector Buttons */}
+          <div className="tv-tabs-group" style={{ display: 'flex', background: 'var(--bg-subtle)', padding: '3px', borderRadius: '8px', overflowX: 'auto', maxWidth: '100%' }}>
+            <button 
+              className={`btn btn-sm ${activeTab === 'consoles' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ padding: '6px 12px', border: 'none', whiteSpace: 'nowrap' }}
+              onClick={() => setActiveTab('consoles')}
+            >
+              الأجهزة والمباريات
+            </button>
+            <button 
+              className={`btn btn-sm ${activeTab === 'standings' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ padding: '6px 12px', border: 'none', whiteSpace: 'nowrap' }}
+              onClick={() => setActiveTab('standings')}
+            >
+              المجموعات
+            </button>
+            <button 
+              className={`btn btn-sm ${activeTab === 'tree' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ padding: '6px 12px', border: 'none', whiteSpace: 'nowrap' }}
+              onClick={() => setActiveTab('tree')}
+            >
+              شجرة الإقصائيات
+            </button>
+            <button 
+              className={`btn btn-sm ${activeTab === 'scorers' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ padding: '6px 12px', border: 'none', whiteSpace: 'nowrap' }}
+              onClick={() => setActiveTab('scorers')}
+            >
+              الهدافون
+            </button>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            {/* View Selector Buttons */}
-            <div style={{ display: 'flex', background: 'var(--bg-subtle)', padding: '3px', borderRadius: '8px' }}>
-              <button 
-                className={`btn btn-sm ${activeTab === 'consoles' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '5px 12px', border: 'none' }}
-                onClick={() => setActiveTab('consoles')}
-              >
-                الأجهزة وطوابير المباريات
-              </button>
-              <button 
-                className={`btn btn-sm ${activeTab === 'standings' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '5px 12px', border: 'none' }}
-                onClick={() => setActiveTab('standings')}
-              >
-                جداول المجموعات
-              </button>
-              <button 
-                className={`btn btn-sm ${activeTab === 'tree' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '5px 12px', border: 'none' }}
-                onClick={() => setActiveTab('tree')}
-              >
-                شجرة الإقصائيات
-              </button>
-              <button 
-                className={`btn btn-sm ${activeTab === 'scorers' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '5px 12px', border: 'none' }}
-                onClick={() => setActiveTab('scorers')}
-              >
-                الهدافون
-              </button>
-            </div>
-
-            {/* Share Public Link Button for WhatsApp */}
-            <button 
-              className="btn btn-secondary btn-sm"
-              onClick={handleCopyPublicLink}
-              title="نسخ رابط صفحة المتابعة لمشاركته مع الطلاب في مجموعات الواتساب"
-            >
-              {copiedLink ? <Check size={15} color="#10B981" /> : <Share2 size={15} />}
-              <span>{copiedLink ? 'تم نسخ الرابط!' : 'رابط المتابعة للطلاب'}</span>
-            </button>
-
-            {/* Refresh Live Feed Button */}
-            <button 
-              className="btn btn-secondary btn-sm"
-              onClick={handleManualRefresh}
-              disabled={isLoading || isRefreshing}
-              title="تحديث البث وجلب أحدث النتائج فورياً من السحابة"
-            >
-              <RefreshCw 
-                size={15} 
-                style={{ 
-                  animation: (isLoading || isRefreshing) ? 'spinOverlayRing 0.8s linear infinite' : 'none' 
-                }} 
-              />
-              <span>تحديث البث</span>
-            </button>
-
-            {/* Auto-rotate Toggle for Projector */}
+            {/* Auto-rotate Toggle for Projector (Admin only) */}
             {!isPublicMode && (
               <button 
                 className={`btn btn-sm ${isAutoRotate ? 'btn-gold' : 'btn-secondary'}`}
                 onClick={() => setIsAutoRotate(!isAutoRotate)}
-                title="تقليب دوري تلقائي للشاشات كل 18 ثانية للبروجكتر"
+                title="تقليب دوري تلقائي للشاشات"
               >
                 {isAutoRotate ? <Pause size={14} /> : <Play size={14} />}
                 <span>{isAutoRotate ? 'إيقاف الدوران' : 'دوران تلقائي'}</span>
@@ -253,7 +211,7 @@ export default function TvDisplayTab({
             )}
 
             {/* Fullscreen Button */}
-            <button className="btn btn-secondary btn-sm" onClick={toggleFullscreen}>
+            <button className="btn btn-secondary btn-sm" onClick={toggleFullscreen} title="ملء الشاشة">
               {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
               <span>{isFullscreen ? 'تصغير' : 'ملء الشاشة'}</span>
             </button>
@@ -261,22 +219,22 @@ export default function TvDisplayTab({
         </div>
       </div>
 
-      {/* Quick Player Match Finder (ابحث عن مباراتك) */}
-      <div className="clean-card" style={{ padding: '12px 20px', marginBottom: '16px', background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      {/* Quick Player Match Finder */}
+      <div className="clean-card" style={{ padding: '12px 16px', marginBottom: '16px', background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Search size={18} color="var(--ksu-green)" />
-            <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#065F46' }}>
-              استعلام اللاعب عن موعد مباراته القادمة:
+            <span style={{ fontWeight: 700, fontSize: '0.875rem', color: '#065F46' }}>
+              استعلام عن موعد مباراة:
             </span>
           </div>
 
-          <div style={{ position: 'relative', width: '320px', maxWidth: '100%' }}>
+          <div style={{ width: '320px', maxWidth: '100%' }}>
             <input 
               type="text"
               className="form-input"
               style={{ padding: '6px 12px', fontSize: '0.85rem' }}
-              placeholder="اكتب اسمك أو رقمك الجامعي..."
+              placeholder="ابحث باسمك أو رقمك الجامعي..."
               value={playerSearch}
               onChange={(e) => setPlayerSearch(e.target.value)}
             />
@@ -292,25 +250,25 @@ export default function TvDisplayTab({
                   أهلاً {searchResult.player.name} ({searchResult.player.team}):
                 </span>
                 {searchResult.nextMatch ? (
-                  <div>
-                    <span style={{ color: '#065F46', marginRight: '6px', fontWeight: 600 }}>
-                      مباراتك القادمة ضد <b>{participantsMap[searchResult.nextMatch.player1Id === searchResult.player.id ? searchResult.nextMatch.player2Id : searchResult.nextMatch.player1Id]?.name}</b> على <b>[جهاز {searchResult.nextMatch.consoleId}]</b> — [اليوم #{searchResult.nextMatch.dayNumber || 1}] (ترتيب المباراة: #{searchResult.nextMatch.matchNumber} {searchResult.nextMatch.groupName})!
-                    </span>
+                  <div style={{ marginTop: '4px' }}>
+                    <div style={{ color: '#065F46', fontWeight: 600, fontSize: '0.875rem' }}>
+                      مباراتك القادمة ضد <b>{participantsMap[searchResult.nextMatch.player1Id === searchResult.player.id ? searchResult.nextMatch.player2Id : searchResult.nextMatch.player1Id]?.name}</b> على <b>جهاز {searchResult.nextMatch.consoleId}</b> — اليوم {searchResult.nextMatch.dayNumber || 1} (#{searchResult.nextMatch.matchNumber})
+                    </div>
                     {searchResult.nextMatchWithEst?.estimatedTime && (
-                      <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', background: '#ECFDF5', border: '1.5px solid #10B981', padding: '6px 12px', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 800, color: '#065F46' }}>
-                        <Clock size={16} color="#059669" />
-                        <span>الوقت المتوقع لبدء مباراتك بالصالة: ({searchResult.nextMatchWithEst.estimatedTime.rangeStr}) تقريباً</span>
+                      <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px', background: '#ECFDF5', border: '1px solid #10B981', padding: '6px 10px', borderRadius: '6px', fontSize: '0.82rem', fontWeight: 700, color: '#065F46' }}>
+                        <Clock size={15} color="#059669" />
+                        <span>الموعد المتوقع: {searchResult.nextMatchWithEst.estimatedTime.rangeStr} تقريباً</span>
                       </div>
                     )}
                   </div>
                 ) : (
-                  <span style={{ color: 'var(--text-muted)', marginRight: '6px' }}>
-                    لقد أكملت جميع مبارياتك المقررة حالياً ✓
-                  </span>
+                  <div style={{ color: 'var(--text-muted)', marginTop: '4px', fontSize: '0.85rem' }}>
+                    أكملت جميع مبارياتك المقررة حالياً ✓
+                  </div>
                 )}
               </div>
             ) : (
-              <span style={{ fontSize: '0.85rem', color: '#DC2626' }}>لم يتم العثور على لاعب بهذا الاسم.</span>
+              <span style={{ fontSize: '0.82rem', color: '#DC2626' }}>لم يتم العثور على لاعب بهذا الاسم أو الرقم.</span>
             )}
           </div>
         )}
@@ -347,9 +305,9 @@ export default function TvDisplayTab({
 
             <div style={{ fontSize: '0.8rem', color: isTvDayActive ? '#059669' : (isFutureDay ? '#2563EB' : 'var(--text-muted)'), fontWeight: 700 }}>
               {isTvDayActive ? (
-                <span>🟢 اليوم {tvDay} ({dayDates[tvDay] || ''}) — الصالة نشطة ومباشرة الآن</span>
+                <span>🟢 اليوم {tvDay} — نشط الآن</span>
               ) : (
-                <span>{isFutureDay ? `⏳ اليوم ${tvDay} مجدول لتاريخ ${dayDates[tvDay] || ''} (قيد الانتظار لم تبدأ بعد)` : `✓ اليوم ${tvDay} (سابق)`}</span>
+                <span>{isFutureDay ? `⏳ اليوم ${tvDay} (${dayDates[tvDay] || ''})` : `✓ اليوم ${tvDay} (منتهي)`}</span>
               )}
             </div>
           </div>
@@ -678,8 +636,8 @@ export default function TvDisplayTab({
       {/* Circular Loading Overlay with Blurred Background & Competition Logo */}
       <SyncLoadingOverlay 
         show={isLoading || isRefreshing}
-        message="جاري تحديث وتحميل بيانات البث المباشر..."
-        subtext="جلب أحدث نتائج الصالة وتحديثات الأجهزة والشجرة فورياً"
+        message="جاري تحديث البيانات..."
+        subtext=""
       />
     </div>
   );

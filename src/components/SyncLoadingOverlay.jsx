@@ -3,8 +3,8 @@ import logoUrl from '../utils/logo';
 
 export default function SyncLoadingOverlay({
   show,
-  message = 'جاري مزامنة وتحديث البيانات سحابياً...',
-  subtext = 'حماية فورية لمنع تداخل وتعارض تعديلات المشرفين'
+  message = 'جاري تحديث البيانات...',
+  subtext = ''
 }) {
   if (!show) return null;
 
@@ -118,7 +118,7 @@ export default function SyncLoadingOverlay({
           background: '#ECFDF5',
           border: '1px solid #A7F3D0',
           borderRadius: '20px',
-          fontSize: '0.72rem',
+          fontSize: '0.75rem',
           fontWeight: 700,
           color: '#065F46'
         }}>
@@ -130,7 +130,7 @@ export default function SyncLoadingOverlay({
             display: 'inline-block',
             animation: 'pulseGreenDot 1s infinite'
           }} />
-          <span>مزامنة فورية متعددة المشرفين (No-Conflict Sync)</span>
+          <span>مزامنة سحابية نشطة</span>
         </div>
       </div>
 

@@ -3,24 +3,18 @@ import {
   X, 
   Send, 
   Clock, 
-  Monitor, 
   MessageCircle, 
   Copy, 
   Check, 
-  AlertCircle, 
   User, 
-  PhoneCall, 
   Edit3,
   ExternalLink,
-  Code2,
-  FileText,
-  Link2
+  Phone
 } from 'lucide-react';
 import { 
   cleanWhatsAppPhone, 
   formatEstimatedTimeStr, 
   generateMatchReminderText, 
-  encodeFullPercentUrl,
   buildWhatsAppUrl 
 } from '../utils/whatsappHelper';
 
@@ -35,15 +29,14 @@ export default function WhatsAppReminderModal({
   const [p1PhoneInput, setP1PhoneInput] = useState(p1?.phone || p1?.displayPhone || '');
   const [p2PhoneInput, setP2PhoneInput] = useState(p2?.phone || p2?.displayPhone || '');
   const [customNote, setCustomNote] = useState('');
+  const [copiedText, setCopiedText] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [copiedEncoded, setCopiedEncoded] = useState(false);
-  const [previewMode, setPreviewMode] = useState('encoded'); // 'encoded' (default, %3D/%D8) or 'readable'
 
   const activePlayer = selectedTarget === 'p1' ? p1 : p2;
   const activeOpponent = selectedTarget === 'p1' ? p2 : p1;
   const activePhone = selectedTarget === 'p1' ? p1PhoneInput : p2PhoneInput;
 
-  // 1. Raw Arabic Text
+  // Clean readable Arabic message
   const currentMessageText = useMemo(() => {
     return generateMatchReminderText({
       player: activePlayer,
@@ -53,38 +46,23 @@ export default function WhatsAppReminderModal({
     });
   }, [activePlayer, activeOpponent, match, customNote]);
 
-  // 2. Strict Full URL Percent-Encoded string (Zero literal Arabic characters, full %3D/%20/%D8%A7...)
-  const encodedMessageText = useMemo(() => {
-    return encodeFullPercentUrl(currentMessageText);
-  }, [currentMessageText]);
-
-  // 3. Complete WhatsApp URL with encoded parameter
+  // Clean WhatsApp URL for active target
   const activeWhatsAppUrl = useMemo(() => {
     return buildWhatsAppUrl(activePhone, currentMessageText);
   }, [activePhone, currentMessageText]);
 
-  const p1WhatsAppUrl = useMemo(() => {
-    const msg = generateMatchReminderText({ player: p1, opponent: p2, match, customNote });
-    return buildWhatsAppUrl(p1PhoneInput, msg);
-  }, [p1, p2, p1PhoneInput, match, customNote]);
-
-  const p2WhatsAppUrl = useMemo(() => {
-    const msg = generateMatchReminderText({ player: p2, opponent: p1, match, customNote });
-    return buildWhatsAppUrl(p2PhoneInput, msg);
-  }, [p1, p2, p2PhoneInput, match, customNote]);
+  const handleCopyMessage = () => {
+    navigator.clipboard.writeText(currentMessageText);
+    setCopiedText(true);
+    setTimeout(() => setCopiedText(false), 2000);
+    if (onNotify) onNotify('تم نسخ نص الرسالة بنجاح!', 'info');
+  };
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(activeWhatsAppUrl);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
-    if (onNotify) onNotify('تم نسخ رابط الواتساب المشفر بالكامل بنجاح!', 'info');
-  };
-
-  const handleCopyEncodedText = () => {
-    navigator.clipboard.writeText(encodedMessageText);
-    setCopiedEncoded(true);
-    setTimeout(() => setCopiedEncoded(false), 2000);
-    if (onNotify) onNotify('تم نسخ النص المشفر بالكامل (%XX) بنجاح!', 'info');
+    if (onNotify) onNotify('تم نسخ رابط الواتساب!', 'info');
   };
 
   const validatePhone = (phone, playerName) => {
@@ -101,41 +79,52 @@ export default function WhatsAppReminderModal({
   return (
     <div className="modal-overlay" onClick={onClose} style={{ zIndex: 9999 }}>
       <div 
-        className="modal-content" 
+        className="modal-content whatsapp-modal" 
         onClick={(e) => e.stopPropagation()} 
-        style={{ maxWidth: '680px', width: '95%', padding: 0, overflow: 'hidden' }}
+        style={{ 
+          maxWidth: '560px', 
+          width: '100%', 
+          maxHeight: '90vh',
+          display: 'flex',
+          flexDirection: 'column',
+          padding: 0, 
+          overflow: 'hidden',
+          borderRadius: '16px',
+          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.08)'
+        }}
       >
         {/* Modal Header */}
         <div style={{
-          background: 'linear-gradient(135deg, #065F46 0%, #047857 50%, #059669 100%)',
+          background: 'linear-gradient(135deg, #065F46 0%, #047857 100%)',
           color: '#FFFFFF',
-          padding: '18px 24px',
+          padding: '14px 18px',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between'
+          justifyContent: 'space-between',
+          flexShrink: 0
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{
               background: '#25D366',
               color: '#FFFFFF',
-              width: '38px',
-              height: '38px',
+              width: '36px',
+              height: '36px',
               borderRadius: '10px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+              flexShrink: 0
             }}>
-              <MessageCircle size={22} />
+              <MessageCircle size={20} />
             </div>
             <div>
-              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0 }}>
-                تذكير واتساب للمباراة #{match.matchNumber}
+              <h3 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0 }}>
+                تذكير بمباراة #{match.matchNumber}
               </h3>
-              <div style={{ fontSize: '0.8rem', opacity: 0.9, marginTop: '2px', display: 'flex', gap: '8px' }}>
+              <div style={{ fontSize: '0.75rem', opacity: 0.9, marginTop: '2px', display: 'flex', gap: '6px' }}>
                 <span>جهاز {match.consoleId}</span>
                 <span>•</span>
-                <span>{match.groupName || match.title || 'مرحلة المجموعات'}</span>
+                <span>{match.groupName || match.title || 'المجموعات'}</span>
                 {match.dayNumber && (
                   <>
                     <span>•</span>
@@ -148,8 +137,9 @@ export default function WhatsAppReminderModal({
 
           <button 
             onClick={onClose}
+            aria-label="إغلاق"
             style={{
-              background: 'rgba(255, 255, 255, 0.15)',
+              background: 'rgba(255, 255, 255, 0.18)',
               border: 'none',
               borderRadius: '8px',
               color: '#FFFFFF',
@@ -165,36 +155,40 @@ export default function WhatsAppReminderModal({
           </button>
         </div>
 
-        {/* Modal Body */}
-        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: '78vh', overflowY: 'auto' }}>
-          {/* Estimated Time Alert Banner */}
+        {/* Modal Scrollable Body */}
+        <div style={{ 
+          padding: '16px', 
+          display: 'flex', 
+          flexDirection: 'column', 
+          gap: '14px', 
+          flex: 1, 
+          overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch'
+        }}>
+          {/* Estimated Time Alert */}
           <div style={{
             background: match.status === 'live' ? '#ECFDF5' : '#FEF9C3',
-            border: `1.5px solid ${match.status === 'live' ? '#10B981' : '#EAB308'}`,
+            border: `1px solid ${match.status === 'live' ? '#10B981' : '#FCD34D'}`,
             borderRadius: '10px',
-            padding: '10px 14px',
+            padding: '10px 12px',
             display: 'flex',
             alignItems: 'center',
             gap: '10px'
           }}>
-            <Clock size={20} color={match.status === 'live' ? '#059669' : '#CA8A04'} style={{ flexShrink: 0 }} />
-            <div>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: match.status === 'live' ? '#065F46' : '#854D0E' }}>
-                الوقت التقديري لحضور واستعداد اللاعبين:
-              </div>
-              <div style={{ fontSize: '0.9rem', fontWeight: 800, color: match.status === 'live' ? '#047857' : '#713F12' }}>
-                {estTimeStr}
-              </div>
+            <Clock size={18} color={match.status === 'live' ? '#059669' : '#B45309'} style={{ flexShrink: 0 }} />
+            <div style={{ fontSize: '0.82rem', fontWeight: 700, color: match.status === 'live' ? '#065F46' : '#92400E' }}>
+              <span>موعد المباراة المتوقع: </span>
+              <b>{estTimeStr}</b>
             </div>
           </div>
 
-          {/* Participant Selector Cards */}
+          {/* Participant Selector */}
           <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '8px', display: 'block' }}>
-              اختر اللاعب المراد إرسال التذكير له:
+            <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '6px', display: 'block' }}>
+              اختر اللاعب المراد مراسلته:
             </label>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
               {/* Player 1 Card */}
               <div 
                 onClick={() => setSelectedTarget('p1')}
@@ -202,32 +196,30 @@ export default function WhatsAppReminderModal({
                   background: selectedTarget === 'p1' ? '#F0FDF4' : '#FFFFFF',
                   border: `2px solid ${selectedTarget === 'p1' ? '#059669' : 'var(--border-light)'}`,
                   borderRadius: '10px',
-                  padding: '12px',
+                  padding: '10px',
                   cursor: 'pointer',
-                  position: 'relative',
                   transition: 'all 0.15s ease'
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#047857' }}>الطرف الأول (1)</span>
-                  {selectedTarget === 'p1' && <Check size={16} color="#059669" />}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2px' }}>
+                  <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#047857' }}>الطرف الأول</span>
+                  {selectedTarget === 'p1' && <Check size={15} color="#059669" />}
                 </div>
-                <div style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--text-main)' }}>
+                <div style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {p1?.name || match.player1Placeholder || 'اللاعب 1'}
                 </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  نادي: {p1?.team || '—'} {p1?.room ? `| ${p1.room}` : ''}
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                  {p1?.team || '—'}
                 </div>
 
-                <div style={{ marginTop: '8px' }} onClick={(e) => e.stopPropagation()}>
-                  <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block' }}>رقم الجوال (واتساب):</label>
+                <div onClick={(e) => e.stopPropagation()}>
                   <input
                     type="text"
                     value={p1PhoneInput}
                     onChange={(e) => setP1PhoneInput(e.target.value)}
                     placeholder="05XXXXXXXX"
                     className="form-input"
-                    style={{ fontSize: '0.8rem', padding: '4px 8px', marginTop: '2px', direction: 'ltr', textAlign: 'right' }}
+                    style={{ fontSize: '0.78rem', padding: '5px 8px', direction: 'ltr', textAlign: 'right' }}
                   />
                 </div>
               </div>
@@ -239,43 +231,41 @@ export default function WhatsAppReminderModal({
                   background: selectedTarget === 'p2' ? '#F0FDF4' : '#FFFFFF',
                   border: `2px solid ${selectedTarget === 'p2' ? '#059669' : 'var(--border-light)'}`,
                   borderRadius: '10px',
-                  padding: '12px',
+                  padding: '10px',
                   cursor: 'pointer',
-                  position: 'relative',
                   transition: 'all 0.15s ease'
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#047857' }}>الطرف الثاني (2)</span>
-                  {selectedTarget === 'p2' && <Check size={16} color="#059669" />}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2px' }}>
+                  <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#047857' }}>الطرف الثاني</span>
+                  {selectedTarget === 'p2' && <Check size={15} color="#059669" />}
                 </div>
-                <div style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--text-main)' }}>
+                <div style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {p2?.name || match.player2Placeholder || 'اللاعب 2'}
                 </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  نادي: {p2?.team || '—'} {p2?.room ? `| ${p2.room}` : ''}
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                  {p2?.team || '—'}
                 </div>
 
-                <div style={{ marginTop: '8px' }} onClick={(e) => e.stopPropagation()}>
-                  <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block' }}>رقم الجوال (واتساب):</label>
+                <div onClick={(e) => e.stopPropagation()}>
                   <input
                     type="text"
                     value={p2PhoneInput}
                     onChange={(e) => setP2PhoneInput(e.target.value)}
                     placeholder="05XXXXXXXX"
                     className="form-input"
-                    style={{ fontSize: '0.8rem', padding: '4px 8px', marginTop: '2px', direction: 'ltr', textAlign: 'right' }}
+                    style={{ fontSize: '0.78rem', padding: '5px 8px', direction: 'ltr', textAlign: 'right' }}
                   />
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Custom Note Addition */}
+          {/* Optional Note */}
           <div>
-            <label style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Edit3 size={14} color="var(--text-muted)" />
-              <span>إضافة ملاحظة خاصة (تُشفّر وتُضاف للرسالة):</span>
+            <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Edit3 size={13} color="var(--text-muted)" />
+              <span>ملاحظة إضافية للاعب (اختياري):</span>
             </label>
             <input
               type="text"
@@ -283,196 +273,104 @@ export default function WhatsAppReminderModal({
               onChange={(e) => setCustomNote(e.target.value)}
               placeholder="مثال: يرجى التواجد فوراً أو إحضار يد التحكم الخاصة بك"
               className="form-input"
-              style={{ fontSize: '0.85rem', padding: '8px 12px' }}
+              style={{ fontSize: '0.82rem', padding: '7px 10px' }}
             />
           </div>
 
-          {/* Full Encoded WhatsApp URL Field */}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-              <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Link2 size={14} color="#059669" />
-                <span>رابط الواتساب المشفر بالكامل (Full URL Encoded with %XX):</span>
-              </label>
-              <button 
-                type="button"
-                onClick={handleCopyLink}
-                className="btn btn-sm btn-secondary"
-                style={{ padding: '2px 8px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}
-              >
-                {copiedLink ? <Check size={12} color="#059669" /> : <Copy size={12} />}
-                <span>{copiedLink ? 'تم نسخ الرابط ✓' : 'نسخ الرابط'}</span>
-              </button>
-            </div>
-            <input
-              type="text"
-              readOnly
-              value={activeWhatsAppUrl}
-              className="form-input"
-              style={{
-                background: '#F1F5F9',
-                fontFamily: 'monospace',
-                fontSize: '0.72rem',
-                color: '#0F172A',
-                direction: 'ltr',
-                padding: '7px 10px'
-              }}
-            />
-          </div>
-
-          {/* Message Encoding Box (Encrypted by default, no direct Arabic written) */}
+          {/* Clean Readable Message Preview */}
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <button
-                  type="button"
-                  onClick={() => setPreviewMode('encoded')}
-                  className={`btn btn-sm ${previewMode === 'encoded' ? 'btn-primary' : 'btn-secondary'}`}
-                  style={{ padding: '3px 9px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}
-                >
-                  <Code2 size={13} />
-                  <span>النص المشفر بالكامل (%XX)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPreviewMode('readable')}
-                  className={`btn btn-sm ${previewMode === 'readable' ? 'btn-primary' : 'btn-secondary'}`}
-                  style={{ padding: '3px 9px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}
-                >
-                  <FileText size={13} />
-                  <span>المعاينة المقروءة</span>
-                </button>
-              </div>
-
+              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                معاينة نص الرسالة:
+              </span>
               <button 
                 type="button"
-                onClick={handleCopyEncodedText}
+                onClick={handleCopyMessage}
                 className="btn btn-sm btn-secondary"
                 style={{ padding: '3px 8px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}
               >
-                {copiedEncoded ? <Check size={13} color="#059669" /> : <Copy size={13} />}
-                <span>{copiedEncoded ? 'تم نسخ المشفر ✓' : 'نسخ النص المشفر (%XX)'}</span>
+                {copiedText ? <Check size={13} color="#059669" /> : <Copy size={13} />}
+                <span>{copiedText ? 'تم النسخ ✓' : 'نسخ النص'}</span>
               </button>
             </div>
 
-            <textarea
-              readOnly
-              rows={6}
-              value={previewMode === 'encoded' ? encodedMessageText : currentMessageText}
-              className="form-input"
-              style={{
-                background: previewMode === 'encoded' ? '#0F172A' : '#F8FAFC',
-                color: previewMode === 'encoded' ? '#38BDF8' : '#1E293B',
-                fontFamily: previewMode === 'encoded' ? 'monospace' : 'inherit',
-                fontSize: previewMode === 'encoded' ? '0.72rem' : '0.82rem',
-                lineHeight: 1.5,
-                padding: '12px',
-                borderRadius: '8px',
-                border: '1.5px solid var(--border-light)',
-                resize: 'none',
-                direction: previewMode === 'encoded' ? 'ltr' : 'rtl',
-                wordBreak: 'break-all',
-                whiteSpace: previewMode === 'encoded' ? 'normal' : 'pre-line'
-              }}
-            />
+            <div style={{
+              background: '#F8FAFC',
+              border: '1px solid var(--border-light)',
+              borderRadius: '8px',
+              padding: '10px 12px',
+              fontSize: '0.8rem',
+              lineHeight: 1.6,
+              color: 'var(--text-main)',
+              whiteSpace: 'pre-line',
+              maxHeight: '130px',
+              overflowY: 'auto'
+            }}>
+              {currentMessageText}
+            </div>
           </div>
         </div>
 
-        {/* Modal Footer Actions */}
+        {/* Modal Sticky Footer - Always Visible on All Screens */}
         <div style={{
           background: 'var(--bg-subtle)',
-          padding: '14px 20px',
+          padding: '12px 16px',
           borderTop: '1px solid var(--border-light)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '10px'
+          gap: '8px',
+          flexShrink: 0
         }}>
           <button 
             type="button" 
-            className="btn btn-secondary" 
+            className="btn btn-secondary btn-sm" 
             onClick={onClose}
           >
             إغلاق
           </button>
 
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            {/* Direct Send to Player 1 */}
-            <a
-              href={p1WhatsAppUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn-secondary"
-              style={{
-                borderColor: '#25D366',
-                color: '#065F46',
-                fontWeight: 700,
-                fontSize: '0.82rem',
-                textDecoration: 'none',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
-              onClick={(e) => {
-                if (!validatePhone(p1PhoneInput, p1?.name)) e.preventDefault();
-                else if (onNotify) onNotify(`جاري فتح محادثة واتساب المشفرة لـ ${p1?.name}! 📲`, 'success');
-              }}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button 
+              type="button"
+              onClick={handleCopyLink}
+              className="btn btn-secondary btn-sm"
+              title="نسخ رابط الواتساب"
+              style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem' }}
             >
-              <MessageCircle size={15} color="#25D366" />
-              <span>إرسال لـ {p1?.name ? p1.name.split(' ')[0] : 'الطرف 1'} 📲</span>
-            </a>
+              {copiedLink ? <Check size={14} color="#059669" /> : <Copy size={14} />}
+              <span>{copiedLink ? 'تم نسخ الرابط' : 'نسخ الرابط'}</span>
+            </button>
 
-            {/* Direct Send to Player 2 */}
-            <a
-              href={p2WhatsAppUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn-secondary"
-              style={{
-                borderColor: '#25D366',
-                color: '#065F46',
-                fontWeight: 700,
-                fontSize: '0.82rem',
-                textDecoration: 'none',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
-              onClick={(e) => {
-                if (!validatePhone(p2PhoneInput, p2?.name)) e.preventDefault();
-                else if (onNotify) onNotify(`جاري فتح محادثة واتساب المشفرة لـ ${p2?.name}! 📲`, 'success');
-              }}
-            >
-              <MessageCircle size={15} color="#25D366" />
-              <span>إرسال لـ {p2?.name ? p2.name.split(' ')[0] : 'الطرف 2'} 📲</span>
-            </a>
-
-            {/* Primary Action Link for active target */}
+            {/* Prominent WhatsApp Green Send Button */}
             <a
               href={activeWhatsAppUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="btn btn-primary"
+              className="btn btn-primary btn-sm"
               style={{
                 background: '#25D366',
                 borderColor: '#25D366',
                 color: '#FFFFFF',
                 fontWeight: 800,
+                fontSize: '0.85rem',
                 textDecoration: 'none',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
-                boxShadow: '0 2px 6px rgba(37, 211, 102, 0.35)'
+                gap: '6px',
+                padding: '8px 16px',
+                boxShadow: '0 2px 8px rgba(37, 211, 102, 0.35)'
               }}
               onClick={(e) => {
-                if (!validatePhone(activePhone, activePlayer?.name)) e.preventDefault();
-                else if (onNotify) onNotify(`تم فتح رابط واتساب المشفر بنجاح! 📲`, 'success');
+                if (!validatePhone(activePhone, activePlayer?.name)) {
+                  e.preventDefault();
+                } else if (onNotify) {
+                  onNotify(`جاري فتح محادثة واتساب لـ ${activePlayer?.name}! 📲`, 'success');
+                }
               }}
             >
-              <Send size={16} />
-              <span>فتح رابط واتساب المشفر</span>
-              <ExternalLink size={13} style={{ opacity: 0.8 }} />
+              <Send size={15} />
+              <span>إرسال عبر واتساب 📲</span>
             </a>
           </div>
         </div>

@@ -239,23 +239,23 @@ export default function MatchesTab({
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', fontSize: '0.825rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ width: '14px', height: '14px', borderRadius: '4px', background: '#ECFDF5', border: '2px solid #059669', display: 'inline-block' }}></span>
-            <span style={{ fontWeight: 700, color: '#065F46' }}>أخضر: المباراة الجارية الآن (Current)</span>
+            <span style={{ width: '12px', height: '12px', borderRadius: '4px', background: '#ECFDF5', border: '2px solid #059669', display: 'inline-block' }}></span>
+            <span style={{ fontWeight: 700, color: '#065F46' }}>جارية الآن</span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ width: '14px', height: '14px', borderRadius: '4px', background: '#FEF9C3', border: '2px solid #CA8A04', display: 'inline-block' }}></span>
-            <span style={{ fontWeight: 700, color: '#854D0E' }}>أصفر: المباراة التالية للاستعداد (Next)</span>
+            <span style={{ width: '12px', height: '12px', borderRadius: '4px', background: '#FEF9C3', border: '2px solid #CA8A04', display: 'inline-block' }}></span>
+            <span style={{ fontWeight: 700, color: '#854D0E' }}>المباراة القادمة</span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ width: '14px', height: '14px', borderRadius: '4px', background: '#F1F5F9', border: '1px solid #94A3B8', display: 'inline-block' }}></span>
-            <span style={{ fontWeight: 600, color: '#64748B' }}>رمادي: مباراة منتهية (Finished)</span>
+            <span style={{ width: '12px', height: '12px', borderRadius: '4px', background: '#F1F5F9', border: '1px solid #94A3B8', display: 'inline-block' }}></span>
+            <span style={{ fontWeight: 600, color: '#64748B' }}>منتهية</span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ width: '14px', height: '14px', borderRadius: '4px', background: '#FFFFFF', border: '1px solid var(--border-strong)', display: 'inline-block' }}></span>
-            <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>أبيض: في طابور الانتظار (Queued)</span>
+            <span style={{ width: '12px', height: '12px', borderRadius: '4px', background: '#FFFFFF', border: '1px solid var(--border-strong)', display: 'inline-block' }}></span>
+            <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>في الانتظار</span>
           </div>
         </div>
       </div>

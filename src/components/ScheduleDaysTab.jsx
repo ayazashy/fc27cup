@@ -155,14 +155,11 @@ export default function ScheduleDaysTab({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px', borderBottom: '1px solid var(--border-light)', paddingBottom: '16px' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <CalendarDays size={26} color="var(--ksu-green)" />
-              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--ksu-green)', margin: 0 }}>
-                جدولة وتوزيع الأيام الذكية (X Days Split)
+              <CalendarDays size={24} color="var(--ksu-green)" />
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--ksu-green)', margin: 0 }}>
+                جدول أيام البطولة
               </h2>
             </div>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-              توزيع مباريات الدورات الكاملة (p - 1 Circles) على أيام البطولة مع تطبيق قاعدة التناظر العكسي لأحمال اللاعبين
-            </p>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
@@ -381,13 +378,10 @@ export default function ScheduleDaysTab({
       <div className="clean-card" style={{ padding: '20px', marginBottom: '24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
           <div>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-              <Layers size={20} color="var(--ksu-green)" />
-              <span>مصفوفة الدورات الكاملة (Circles / Loops Visualizer)</span>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+              <Layers size={18} color="var(--ksu-green)" />
+              <span>توزيع الجولات</span>
             </h3>
-            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-              قوائم الدورات الكاملة الـ {numCircles} وتوزيعها بين اليوم 1 واليوم 2
-            </p>
           </div>
 
           {/* Filter Circle Tabs */}
@@ -567,13 +561,10 @@ export default function ScheduleDaysTab({
       <div className="clean-card" style={{ padding: '20px', marginBottom: '24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
           <div>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-              <Calendar size={20} color="var(--ksu-green)" />
-              <span>تفصيل مباريات أيام البطولة (Day-by-Day Schedules)</span>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+              <Calendar size={18} color="var(--ksu-green)" />
+              <span>مباريات الأيام</span>
             </h3>
-            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-              المباريات المجدولة لكل يوم مع فحص عدالة الأحمال والتناظر العكسي
-            </p>
           </div>
 
           {/* Day View Filter */}
@@ -673,13 +664,10 @@ export default function ScheduleDaysTab({
       <div className="clean-card" style={{ padding: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px', marginBottom: '16px' }}>
           <div>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-              <Users size={20} color="var(--ksu-green)" />
-              <span>مصفوفة ومطابقة أحمال اللاعبين (Player Workload Symmetry Matrix)</span>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+              <Users size={18} color="var(--ksu-green)" />
+              <span>توزيع مباريات اللاعبين</span>
             </h3>
-            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-              جدول تفصيلي يوضح عدد مباريات كل لاعب في اليوم 1 واليوم 2 مع مؤشر التحقق من التناظر العكسي
-            </p>
           </div>
 
           <div style={{ position: 'relative', width: '280px', maxWidth: '100%' }}>

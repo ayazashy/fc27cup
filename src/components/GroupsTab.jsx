@@ -111,9 +111,6 @@ export default function GroupsTab({
               <Shuffle size={20} color="var(--ksu-green)" />
               <span>قرعة البطولة والمجموعات</span>
             </div>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-              توزيع عشوائي عادل ومباشر مع حساب لحظي للترتيب وفارق الأهداف والمواجهات المباشرة واللعب النظيف
-            </p>
           </div>
 
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>

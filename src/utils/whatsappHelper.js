@@ -24,26 +24,26 @@ export function formatEstimatedTimeStr(match) {
 
 export function generateMatchReminderText({ player, opponent, match, customNote = '' }) {
   const pName = player?.name || 'البطل';
-  const oppName = opponent?.name ? `${opponent.name} (${opponent.team || '—'})` : 'المنافس المجدول';
+  const oppName = opponent?.name ? `${opponent.name} (${opponent.team || '—'})` : 'المنافس';
   const consoleNum = match?.consoleId || '—';
   const matchNum = match?.matchNumber || '—';
   const timeStr = formatEstimatedTimeStr(match);
   const dayStr = match?.dayNumber ? `اليوم ${match.dayNumber}` : '';
   const groupOrStage = match?.groupName || match?.title || 'مرحلة المجموعات';
 
-  let msg = `السلام عليكم ورحمة الله وبركاته يا ${pName} 👋\n`;
-  msg += `تذكير بمباراتك القادمة في بطولة فيفا (كأس السكن: FC27) 🎮🏆\n\n`;
-  msg += `📌 رقم المباراة: #${matchNum}\n`;
+  let msg = `السلام عليكم يا ${pName} 👋\n`;
+  msg += `تذكير بمباراتك في كأس السكن FC27 🎮🏆\n\n`;
+  msg += `📌 المباراة #${matchNum} (${groupOrStage}${dayStr ? ' • ' + dayStr : ''})\n`;
   msg += `⚔️ المنافس: ${oppName}\n`;
-  msg += `🎮 الصالة والجهاز: جهاز ${consoleNum} (${dayStr ? dayStr + ' • ' : ''}${groupOrStage})\n`;
-  msg += `⏰ موعد الحضور المتوقع: ${timeStr}\n`;
-  msg += `📍 الموقع: صالة الأنشطة الطلابية - سكن الطلاب بجامعة الملك سعود\n`;
+  msg += `🎮 الجهاز: جهاز ${consoleNum}\n`;
+  msg += `⏰ الموعد المتوقع: ${timeStr}\n`;
+  msg += `📍 صالة الأنشطة الطلابية\n`;
 
   if (customNote && customNote.trim()) {
-    msg += `\n💬 ملاحظة من المنظم: ${customNote.trim()}\n`;
+    msg += `\n💬 ملاحظة: ${customNote.trim()}\n`;
   }
 
-  msg += `\n⚠️ نرجو التواجد بجانب الجهاز قبل الموعد بـ 5 دقائق لتجنب اعتبارك متأخراً أو منسحباً. بالتوفيق! ⚽🔥`;
+  msg += `\nيرجى التواجد قبل الموعد بـ 5 دقائق. بالتوفيق! ⚽🔥`;
 
   return msg;
 }
