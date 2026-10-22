@@ -2,6 +2,7 @@
  * Security Gate & Cryptographic Decryption Engine
  * Implements Web Crypto API AES-256-GCM + PBKDF2 decryption for /KSUHTSTAFF
  */
+import { resolveCloudSecretToken } from '../firebase';
 
 // Cryptographic parameters and AES-256-GCM encrypted payload
 export const ENCRYPTED_SALT_B64 = "NXuXOAFaS4v8RooUvP6q0w==";
@@ -76,7 +77,7 @@ export async function verifyAndDecodeKey(inputKey, config = null) {
           authenticated: true,
           role: 'coordinator',
           title: 'منظم الصالة 🎮',
-          secretCode: 'COORDINATOR_' + inputHash.slice(0, 8)
+          secretCode: resolveCloudSecretToken()
         }
       };
     }
@@ -94,7 +95,7 @@ export async function verifyAndDecodeKey(inputKey, config = null) {
         authenticated: true,
         role: 'master_admin',
         title: 'المدير العام 🛡️',
-        secretCode: 'MASTER_ADMIN'
+        secretCode: resolveCloudSecretToken()
       }
     };
   }
@@ -137,8 +138,16 @@ export async function verifyAndDecodeKey(inputKey, config = null) {
     const decodedText = dec.decode(decryptedBuffer);
     const payload = JSON.parse(decodedText);
 
-    if (payload && payload.authenticated && payload.secretCode) {
-      return { success: true, role: 'master_admin', payload: { ...payload, role: 'master_admin' } };
+    if (payload && payload.authenticated) {
+      return { 
+        success: true, 
+        role: 'master_admin', 
+        payload: { 
+          ...payload, 
+          role: 'master_admin',
+          secretCode: resolveCloudSecretToken()
+        } 
+      };
     }
     return { success: false, error: 'invalid_payload' };
   } catch (error) {

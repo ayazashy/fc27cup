@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Settings, Check, Award, Shield, Monitor, Cloud, Copy, CheckCheck, AlertCircle, Clock, CalendarDays } from 'lucide-react';
 import { computeCoordHash } from '../utils/securityGate';
+import { testFirestoreWriteAuthorization } from '../firebase';
 
 export default function SettingsTab({ 
   config, 
@@ -9,6 +10,8 @@ export default function SettingsTab({
   onNotify
 }) {
   const [copiedRules, setCopiedRules] = useState(false);
+  const [isTestingAuth, setIsTestingAuth] = useState(false);
+  const [authTestResult, setAuthTestResult] = useState(null);
 
   const handleChange = (key, value) => {
     setConfig(prev => ({
@@ -23,13 +26,45 @@ export default function SettingsTab({
   };
 
   const firestoreRulesText = `rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // 1. Strictly protect your secret document so NO ONE can read or change it online
+    match /NYC1043/secret {
+      allow read, write: if false;
+    }
+
+    // 2. Apply the verification check to all other collections in your database
     match /{document=**} {
-      allow read, write: if true;
+      // Anyone can read your public data
+      allow read: if true;
+      
+      // Only allow writes if the user sends the secret code matching the "s" field
+      allow write: if request.resource.data.secretCode == get(/databases/$(database)/documents/NYC1043/secret).data.s;
     }
   }
 }`;
+
+  const handleTestCloudAuth = async () => {
+    setIsTestingAuth(true);
+    setAuthTestResult(null);
+    try {
+      const res = await testFirestoreWriteAuthorization();
+      if (res.success) {
+        setAuthTestResult({ success: true, message: 'تم التحقق بنجاح! كود التفويض مطابق تماماً لقواعد حماية Firestore ☁️✅' });
+        onNotify('تم التحقق بنجاح من مطابقة كود الأمان مع قواعد Firestore السحابية!', 'success');
+      } else {
+        setAuthTestResult({ success: false, message: `فشل التحقق: ${res.error}` });
+        onNotify(`تعذر التحقق: ${res.error}`, 'error');
+      }
+    } catch (err) {
+      setAuthTestResult({ success: false, message: err.message });
+      onNotify(`خطأ: ${err.message}`, 'error');
+    } finally {
+      setIsTestingAuth(false);
+    }
+  };
 
   const handleCopyRules = () => {
     navigator.clipboard.writeText(firestoreRulesText);
@@ -452,6 +487,29 @@ service cloud.firestore {
               <pre style={{ direction: 'ltr', background: '#FFFFFF', padding: '10px', borderRadius: '6px', fontSize: '0.8rem', border: '1px solid var(--border-strong)', overflowX: 'auto' }}>
                 {firestoreRulesText}
               </pre>
+
+              <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleTestCloudAuth}
+                  disabled={isTestingAuth}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Cloud size={14} color="#2563EB" />
+                  <span>{isTestingAuth ? 'جاري فحص الاتصال والتفويض...' : 'فحص صلاحيات الكتابة والمزامنة السحابية'}</span>
+                </button>
+
+                {authTestResult && (
+                  <span style={{ 
+                    fontSize: '0.8rem', 
+                    fontWeight: 600, 
+                    color: authTestResult.success ? '#059669' : '#DC2626' 
+                  }}>
+                    {authTestResult.message}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
