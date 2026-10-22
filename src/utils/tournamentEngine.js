@@ -75,8 +75,16 @@ export function formatMinsToTime12(totalMins) {
  */
 export function parseTimeToMins(timeStr) {
   if (!timeStr || !timeStr.includes(':')) return 0;
-  const [hStr, mStr] = timeStr.split(':');
-  return Number(hStr) * 60 + Number(mStr);
+  let str = String(timeStr).trim();
+  const isPM = str.includes('م') || str.toLowerCase().includes('pm');
+  const isAM = str.includes('ص') || str.toLowerCase().includes('am');
+  str = str.replace(/[^\d:]/g, '');
+  const [hStr, mStr] = str.split(':');
+  let h = Number(hStr) || 0;
+  const m = Number(mStr) || 0;
+  if (isPM && h < 12) h += 12;
+  if (isAM && h === 12) h = 0;
+  return h * 60 + m;
 }
 
 /**
@@ -133,15 +141,31 @@ export function calculateFixedMatchSchedule(dayMatches, startTimeStr = '18:00', 
   Object.entries(consoleQueues).forEach(([cid, queue]) => {
     let cursorMins = startMins;
     queue.forEach(m => {
-      const slotStart = adjustForBreaks(cursorMins);
-      const slotEnd = slotStart + matchDurationMins;
-      result[m.id] = {
-        startMins: slotStart,
-        endMins: slotEnd,
-        timeStr: formatMinsToTime12(slotStart),
-        endTimeStr: formatMinsToTime12(slotEnd)
-      };
-      cursorMins = slotEnd;
+      if (m.customTime) {
+        const customStart = parseTimeToMins(m.customTime);
+        const slotEnd = customStart + matchDurationMins;
+        result[m.id] = {
+          startMins: customStart,
+          endMins: slotEnd,
+          timeStr: formatMinsToTime12(customStart),
+          endTimeStr: formatMinsToTime12(slotEnd),
+          isCustom: true
+        };
+        if (slotEnd > cursorMins) {
+          cursorMins = slotEnd;
+        }
+      } else {
+        const slotStart = adjustForBreaks(cursorMins);
+        const slotEnd = slotStart + matchDurationMins;
+        result[m.id] = {
+          startMins: slotStart,
+          endMins: slotEnd,
+          timeStr: formatMinsToTime12(slotStart),
+          endTimeStr: formatMinsToTime12(slotEnd),
+          isCustom: false
+        };
+        cursorMins = slotEnd;
+      }
     });
   });
 
@@ -586,14 +610,26 @@ export function getConsoleStatusMap(matches, consolesCount = 5, minDuration = 10
       // Fallback safe fixed time if sched is missing: start from 18:00 + (mIdx * 12 mins)
       let sched = fixedSchedule[m.id];
       if (!sched) {
-        const fallbackStartMins = 18 * 60 + mIdx * 12;
-        const fallbackEndMins = fallbackStartMins + 12;
-        sched = {
-          startMins: fallbackStartMins,
-          endMins: fallbackEndMins,
-          timeStr: formatMinsToTime12(fallbackStartMins),
-          endTimeStr: formatMinsToTime12(fallbackEndMins)
-        };
+        if (m.customTime) {
+          const customStart = parseTimeToMins(m.customTime);
+          const customEnd = customStart + 12;
+          sched = {
+            startMins: customStart,
+            endMins: customEnd,
+            timeStr: formatMinsToTime12(customStart),
+            endTimeStr: formatMinsToTime12(customEnd),
+            isCustom: true
+          };
+        } else {
+          const fallbackStartMins = 18 * 60 + mIdx * 12;
+          const fallbackEndMins = fallbackStartMins + 12;
+          sched = {
+            startMins: fallbackStartMins,
+            endMins: fallbackEndMins,
+            timeStr: formatMinsToTime12(fallbackStartMins),
+            endTimeStr: formatMinsToTime12(fallbackEndMins)
+          };
+        }
       }
 
       if (isDone) {
@@ -662,7 +698,6 @@ export function calculateGroupStandings(group, allMatches, participantsMap, conf
       playerId: pId,
       name: player.name,
       team: player.team,
-      room: player.room,
       played: 0,
       won: 0,
       drawn: 0,
@@ -899,7 +934,7 @@ export function calculateBestRunnersUp(groups, allMatches, participantsMap, conf
       allRunnersUp.push({
         playerId: runnerUp.playerId,
         playerName: p.name || 'لاعب غير معروف',
-        studentId: p.studentId || '',
+        phone: p.phone || '',
         team: p.team || '',
         groupId: group.id,
         groupName: group.name,
@@ -1066,6 +1101,14 @@ export function generateKnockoutTree(groups, allMatches, participantsMap, config
   const bracketMatches = [];
   let matchNumberCounter = 200;
   let previousRoundMatches = [];
+  const consolesCount = Math.max(1, Number(config.consolesCount) || 5);
+  const daysCount = Math.max(1, Number(config.daysCount) || 2);
+  const koDay = daysCount;
+
+  const consoleCounters = {};
+  for (let c = 1; c <= consolesCount; c++) {
+    consoleCounters[c] = 0;
+  }
 
   activeRounds.forEach((rDef, rIdx) => {
     const numMatchesInRound = rDef.size / 2;
@@ -1110,6 +1153,12 @@ export function generateKnockoutTree(groups, allMatches, participantsMap, config
         }
       }
 
+      // Distribute matches evenly across consoles 1 to consolesCount
+      // The Grand Final is hosted on Console 1 (The Main Arena / المنصة الرئيسية)
+      const assignedConsole = rDef.size === 2 ? 1 : ((m % consolesCount) + 1);
+      consoleCounters[assignedConsole] = (consoleCounters[assignedConsole] || 0) + 1;
+      const order = consoleCounters[assignedConsole];
+
       const matchObj = {
         id: matchId,
         matchNumber: matchNumberCounter++,
@@ -1141,7 +1190,10 @@ export function generateKnockoutTree(groups, allMatches, participantsMap, config
         walkoverWinnerId: null,
         winnerId: null,
         nextMatchId: null,
-        nextMatchSlot: null
+        nextMatchSlot: null,
+        consoleId: assignedConsole,
+        orderOnConsole: order,
+        dayNumber: koDay
       };
 
       currentRoundMatches.push(matchObj);
@@ -1447,8 +1499,7 @@ export function calculatePlayerDayWorkload(matches, participants = [], daysCount
       playerId: p.id,
       name: p.name || 'مشارك',
       team: p.team || '—',
-      studentId: p.studentId || '',
-      room: p.room || '',
+      phone: p.phone || '',
       days: {},
       totalMatches: 0,
       isReverseBalanced: false

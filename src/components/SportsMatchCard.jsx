@@ -17,6 +17,7 @@ export default function SportsMatchCard({
   isDone = false, 
   onSelectMatch, 
   onRemindMatch,
+  onShowCelebration,
   compact = false,
   isPublicMode = false
 }) {
@@ -31,6 +32,8 @@ export default function SportsMatchCard({
   const showTeam2 = !hasKnownLogo2 && !!p2?.team;
 
   const isCompleted = isDone || match.status === 'completed' || match.status === 'walkover';
+  const hasPenalties = match.penalty1 !== null && match.penalty1 !== undefined &&
+                       match.penalty2 !== null && match.penalty2 !== undefined;
 
   let centerContent = null;
   if (isCompleted) {
@@ -45,7 +48,23 @@ export default function SportsMatchCard({
             {match.score2 ?? 0}
           </span>
         </div>
-        <span style={{ fontSize: '0.62rem', color: '#059669', fontWeight: 800 }}>منتهية ✓</span>
+        {hasPenalties ? (
+          <span className="numeric" style={{ 
+            fontSize: '0.62rem', 
+            color: '#B45309', 
+            background: '#FEF3C7', 
+            border: '1px solid #FDE68A', 
+            padding: '1px 5px', 
+            borderRadius: '4px', 
+            fontWeight: 800, 
+            whiteSpace: 'nowrap',
+            lineHeight: 1.2
+          }}>
+            ركلات ترجيح ({match.penalty1} - {match.penalty2})
+          </span>
+        ) : (
+          <span style={{ fontSize: '0.62rem', color: '#059669', fontWeight: 800 }}>منتهية ✓</span>
+        )}
       </div>
     );
   } else if (isCurrent) {
@@ -94,12 +113,21 @@ export default function SportsMatchCard({
     );
   }
 
-  const isClickable = !isPublicMode && typeof onSelectMatch === 'function';
+  const isCelebrationClickable = isPublicMode && isCompleted && typeof onShowCelebration === 'function';
+  const isClickable = (!isPublicMode && typeof onSelectMatch === 'function') || isCelebrationClickable;
   const showRemindBtn = !isCompleted && !isPublicMode && typeof onRemindMatch === 'function';
+
+  const handleClick = () => {
+    if (isCelebrationClickable) {
+      onShowCelebration(match);
+    } else if (!isPublicMode && typeof onSelectMatch === 'function') {
+      onSelectMatch(match);
+    }
+  };
 
   return (
     <div 
-      onClick={isClickable ? () => onSelectMatch(match) : undefined}
+      onClick={isClickable ? handleClick : undefined}
       style={{
         display: 'grid',
         gridTemplateColumns: showRemindBtn ? '1fr auto 1fr auto' : '1fr auto 1fr',
@@ -114,7 +142,11 @@ export default function SportsMatchCard({
         width: '100%',
         boxSizing: 'border-box'
       }}
-      title={isClickable ? "اضغط لرصد أو تعديل نتيجة المباراة" : undefined}
+      title={
+        isCelebrationClickable 
+          ? "اضغط لمشاهدة احتفال الفوز والتفاعل المباشر 🎉" 
+          : (isClickable ? "اضغط لرصد أو تعديل نتيجة المباراة" : undefined)
+      }
     >
       {/* Competitor 1 (Right in Arabic RTL): [Name 1] then [Logo 1] (adjacent to Time) */}
       <div style={{ 

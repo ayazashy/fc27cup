@@ -1,5 +1,6 @@
 import React from 'react';
 import { Award, Trophy, Shield, HeartHandshake, Flame, BarChart3 } from 'lucide-react';
+import { getTeamLogoUrl, DEFAULT_UNKNOWN_LOGO } from '../utils/footballTeams';
 
 export default function StatisticsTab({ 
   matches, 
@@ -149,7 +150,28 @@ export default function StatisticsTab({
                     <tr key={st.player.id}>
                       <td className="numeric" style={{ fontWeight: 800 }}>{i + 1}</td>
                       <td style={{ fontWeight: 700 }}>{st.player.name}</td>
-                      <td style={{ color: 'var(--text-muted)' }}>{st.player.team}</td>
+                      <td>
+                        {(() => {
+                          const logo = getTeamLogoUrl(st.player.team);
+                          const hasKnown = !!logo && logo !== DEFAULT_UNKNOWN_LOGO;
+                          return (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              {logo && (
+                                <img 
+                                  src={logo} 
+                                  alt={st.player.team || ''} 
+                                  title={st.player.team || ''} 
+                                  style={{ width: '22px', height: '22px', objectFit: 'contain' }}
+                                  onError={(e) => { e.target.src = DEFAULT_UNKNOWN_LOGO; }}
+                                />
+                              )}
+                              {(!hasKnown && st.player.team) && (
+                                <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>{st.player.team}</span>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </td>
                       <td className="numeric" style={{ textAlign: 'center', fontWeight: 800, fontSize: '1rem', color: 'var(--ksu-green)' }}>
                         {st.gf}
                       </td>
@@ -190,7 +212,31 @@ export default function StatisticsTab({
                   {bestDefense.map((st, i) => (
                     <tr key={st.player.id}>
                       <td className="numeric" style={{ fontWeight: 800 }}>{i + 1}</td>
-                      <td style={{ fontWeight: 700 }}>{st.player.name}</td>
+                      <td>
+                        {(() => {
+                          const logo = getTeamLogoUrl(st.player.team);
+                          const hasKnown = !!logo && logo !== DEFAULT_UNKNOWN_LOGO;
+                          return (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              {logo && (
+                                <img 
+                                  src={logo} 
+                                  alt={st.player.team || ''} 
+                                  title={st.player.team || ''} 
+                                  style={{ width: '20px', height: '20px', objectFit: 'contain' }}
+                                  onError={(e) => { e.target.src = DEFAULT_UNKNOWN_LOGO; }}
+                                />
+                              )}
+                              <div>
+                                <span style={{ fontWeight: 700 }}>{st.player.name}</span>
+                                {(!hasKnown && st.player.team) && (
+                                  <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', display: 'block' }}>{st.player.team}</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </td>
                       <td className="numeric">{st.played}</td>
                       <td className="numeric" style={{ textAlign: 'center', fontWeight: 800, fontSize: '1rem', color: '#DC2626' }}>
                         {st.ga}
@@ -232,7 +278,31 @@ export default function StatisticsTab({
                   {fairPlay.map((st, i) => (
                     <tr key={st.player.id}>
                       <td className="numeric" style={{ fontWeight: 800 }}>{i + 1}</td>
-                      <td style={{ fontWeight: 700 }}>{st.player.name}</td>
+                      <td>
+                        {(() => {
+                          const logo = getTeamLogoUrl(st.player.team);
+                          const hasKnown = !!logo && logo !== DEFAULT_UNKNOWN_LOGO;
+                          return (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              {logo && (
+                                <img 
+                                  src={logo} 
+                                  alt={st.player.team || ''} 
+                                  title={st.player.team || ''} 
+                                  style={{ width: '20px', height: '20px', objectFit: 'contain' }}
+                                  onError={(e) => { e.target.src = DEFAULT_UNKNOWN_LOGO; }}
+                                />
+                              )}
+                              <div>
+                                <span style={{ fontWeight: 700 }}>{st.player.name}</span>
+                                {(!hasKnown && st.player.team) && (
+                                  <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', display: 'block' }}>{st.player.team}</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </td>
                       <td className="numeric">{st.played}</td>
                       <td className="numeric" style={{ textAlign: 'center' }}>
                         {st.yellowCards}🟨 {st.redCards > 0 ? `${st.redCards}🟥` : ''}

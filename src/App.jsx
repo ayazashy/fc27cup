@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Header from './components/Header';
 import ParticipantsTab from './components/ParticipantsTab';
 import GroupsTab from './components/GroupsTab';
@@ -8,6 +8,7 @@ import TvDisplayTab from './components/TvDisplayTab';
 import StatisticsTab from './components/StatisticsTab';
 import SettingsTab from './components/SettingsTab';
 import ScheduleDaysTab from './components/ScheduleDaysTab';
+import AdminAdjustMatchModal from './components/AdminAdjustMatchModal';
 import { 
   Users, 
   Shuffle, 
@@ -33,6 +34,7 @@ import {
 } from './firebase';
 import AdminLockScreen from './components/AdminLockScreen';
 import SyncLoadingOverlay from './components/SyncLoadingOverlay';
+import WinningCelebrationModal from './components/WinningCelebrationModal';
 import logoUrl from './utils/logo';
 import { 
   isKsuStaffRoute, 
@@ -48,9 +50,23 @@ import {
 } from './utils/securityGate';
 
 const STORAGE_KEY = 'ksu_fc27_tournament_state_v1';
-const PUBLIC_REFRESH_INTERVAL_SECS = 120; // 2 minutes rate limit
 const STORAGE_NEXT_REFRESH_KEY = 'fc27_public_next_refresh_at';
 const STORAGE_LAST_REFRESH_KEY = 'fc27_public_last_refresh_at';
+
+// Helper: Calculate public refresh interval in seconds based on admin config
+function getPublicRefreshIntervalSecs(cfg) {
+  const mins = Math.max(1, Number(cfg?.publicRefreshIntervalMinutes) || 2);
+  return mins * 60;
+}
+
+// Helper: Human-readable Arabic label for public refresh interval (e.g. دقيقتين، 5 دقائق)
+function getPublicRefreshMinutesLabel(cfg) {
+  const mins = Math.max(1, Number(cfg?.publicRefreshIntervalMinutes) || 2);
+  if (mins === 1) return 'دقيقة واحدة';
+  if (mins === 2) return 'دقيقتين';
+  if (mins <= 10) return `${mins} دقائق`;
+  return `${mins} دقيقة`;
+}
 
 const todayIso = new Date().toISOString().slice(0, 10);
 const tomorrowIso = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
@@ -87,6 +103,7 @@ const DEFAULT_CONFIG = {
   activeDayOverride: null, // null = auto by current date, or 1, 2, etc.
   minMatchDuration: 10,
   maxMatchDuration: 15,
+  publicRefreshIntervalMinutes: 2, // Admin-configurable public auto-refresh rate in minutes
   forfeitScoreWinner: 3,
   forfeitScoreLoser: 0,
   coordinatorPinHash: 'e60d420bdb50f4a29ee9489a96a3aa94bfa4b37c0c52a822564abb3a2213564b'
@@ -130,13 +147,84 @@ function getInitialTimerRemaining() {
       const nextTime = Number(storedNext);
       if (!isNaN(nextTime)) {
         const remaining = Math.ceil((nextTime - Date.now()) / 1000);
-        if (remaining > 0 && remaining <= PUBLIC_REFRESH_INTERVAL_SECS) {
+        if (remaining > 0) {
           return remaining;
         }
       }
     }
   } catch (e) {}
-  return PUBLIC_REFRESH_INTERVAL_SECS;
+  return 120;
+}
+
+/**
+ * Resolves match winner and loser celebration package with team logos and scores
+ */
+export function resolveCelebrationData(match, participantsMap = {}) {
+  if (!match) return null;
+  const p1 = participantsMap[match.player1Id] || { name: match.player1Placeholder || 'اللاعب 1', team: '—' };
+  const p2 = participantsMap[match.player2Id] || { name: match.player2Placeholder || 'اللاعب 2', team: '—' };
+
+  const s1 = match.score1 !== null && match.score1 !== undefined ? Number(match.score1) : null;
+  const s2 = match.score2 !== null && match.score2 !== undefined ? Number(match.score2) : null;
+  const pen1 = match.penalty1 !== null && match.penalty1 !== undefined ? Number(match.penalty1) : null;
+  const pen2 = match.penalty2 !== null && match.penalty2 !== undefined ? Number(match.penalty2) : null;
+  const hasPenalties = pen1 !== null && pen2 !== null;
+  const isWalkover = match.status === 'walkover';
+
+  let winnerId = match.winnerId || match.walkoverWinnerId;
+  if (!winnerId && s1 !== null && s2 !== null) {
+    if (s1 > s2) winnerId = match.player1Id;
+    else if (s2 > s1) winnerId = match.player2Id;
+    else if (hasPenalties) {
+      if (pen1 > pen2) winnerId = match.player1Id;
+      else if (pen2 > pen1) winnerId = match.player2Id;
+    }
+  }
+
+  // If there is no winner, celebration is not applicable
+  if (!winnerId) return null;
+
+  const isP1Winner = winnerId === match.player1Id;
+  const winner = isP1Winner ? p1 : p2;
+  const loser = isP1Winner ? p2 : p1;
+
+  const stageTitles = {
+    group: 'دور المجموعات',
+    r64: 'دور الـ 64',
+    r32: 'دور الـ 32',
+    r16: 'دور الـ 16',
+    qf: 'ربع النهائي',
+    sf: 'نصف النهائي',
+    final: 'المباراة النهائية 🏆'
+  };
+
+  return {
+    id: match.id,
+    match,
+    winner: {
+      id: winnerId,
+      name: winner.name,
+      team: winner.team,
+      score: isP1Winner ? s1 : s2,
+      penalty: isP1Winner ? pen1 : pen2
+    },
+    loser: {
+      id: isP1Winner ? match.player2Id : match.player1Id,
+      name: loser.name,
+      team: loser.team,
+      score: isP1Winner ? s2 : s1,
+      penalty: isP1Winner ? pen2 : pen1
+    },
+    score1: isP1Winner ? s1 : s2,
+    score2: isP1Winner ? s2 : s1,
+    penalty1: isP1Winner ? pen1 : pen2,
+    penalty2: isP1Winner ? pen2 : pen1,
+    hasPenalties,
+    isWalkover,
+    stageLabel: stageTitles[match.stage] || match.stage || 'مباراة البطولة',
+    matchNumber: match.matchNumber,
+    consoleId: match.consoleId
+  };
 }
 
 export default function App() {
@@ -168,6 +256,32 @@ export default function App() {
   // Public Rate Limit Timer & Share state (persisted across reloads)
   const [publicTimerSeconds, setPublicTimerSeconds] = useState(getInitialTimerRemaining);
   const [copiedShareLink, setCopiedShareLink] = useState(false);
+  // Celebration Queue & Interactive Pop-up State
+  const [celebrationQueue, setCelebrationQueue] = useState([]);
+  const [celebrationIndex, setCelebrationIndex] = useState(0);
+  const prevMatchesMapRef = useRef(new Map());
+  const isInitialLoadCompletedRef = useRef(false);
+
+  // Main Admin Match Time & Day Adjust Modal State
+  const [showAdjustMatchModal, setShowAdjustMatchModal] = useState(false);
+
+  const participantsMap = React.useMemo(() => {
+    const map = {};
+    participants.forEach(p => { map[p.id] = p; });
+    return map;
+  }, [participants]);
+
+  const handleLaunchCelebration = (matchOrData) => {
+    if (isAdminRoute) return; // Never show celebration pop-up to admin / organizers
+    if (!matchOrData) return;
+    const cel = matchOrData.winner ? matchOrData : resolveCelebrationData(matchOrData, participantsMap);
+    if (cel) {
+      setCelebrationQueue([cel]);
+      setCelebrationIndex(0);
+    } else {
+      showNotification('لا توجد نتيجة فوز محددة لهذه المباراة لعرض الاحتفال', 'info');
+    }
+  };
 
   const showNotification = (message, type = 'info') => {
     setNotification({ message, type });
@@ -175,6 +289,54 @@ export default function App() {
       setNotification(null);
     }, 4000);
   };
+
+  // Automatic Pop-Up for New Users on First Entry to Website
+  const hasTriggeredWelcomeCelebrationRef = useRef(false);
+  useEffect(() => {
+    // Only trigger for public spectators when initial loading is done and matches are ready
+    if (isAdminRoute || isInitialLoading || matches.length === 0 || hasTriggeredWelcomeCelebrationRef.current) return;
+
+    const welcomeKey = 'fc27_welcome_celebration_seen_v2';
+    let alreadySeen = false;
+    try {
+      alreadySeen = sessionStorage.getItem(welcomeKey);
+    } catch (e) {}
+
+    if (!alreadySeen) {
+      hasTriggeredWelcomeCelebrationRef.current = true;
+      try {
+        sessionStorage.setItem(welcomeKey, 'true');
+      } catch (e) {}
+
+      // Find the most prestigious completed match (Final -> Semifinals -> Latest Knockout -> Latest Group)
+      const pMap = participantsMap;
+      const finalMatch = matches.find(m => m.stage === 'final' && (m.status === 'completed' || m.status === 'walkover'));
+      const sfMatch = matches.find(m => m.stage === 'sf' && (m.status === 'completed' || m.status === 'walkover'));
+      const latestCompleted = [...matches].reverse().find(m => 
+        (m.status === 'completed' || m.status === 'walkover') && 
+        (m.score1 !== m.score2 || m.winnerId || m.penalty1 !== m.penalty2)
+      );
+
+      const targetMatch = finalMatch || sfMatch || latestCompleted;
+      if (targetMatch) {
+        const cel = resolveCelebrationData(targetMatch, pMap);
+        if (cel) {
+          const timer = setTimeout(() => {
+            setCelebrationQueue([cel]);
+            setCelebrationIndex(0);
+          }, 700);
+          return () => clearTimeout(timer);
+        }
+      }
+    }
+  }, [isAdminRoute, isInitialLoading, matches, participantsMap]);
+
+  // If switched to admin route, immediately clear any active celebration queue
+  useEffect(() => {
+    if (isAdminRoute) {
+      setCelebrationQueue([]);
+    }
+  }, [isAdminRoute]);
 
   // 1. Initial Load: Check stored key, handle rate-limited public sync vs admin subscription
   useEffect(() => {
@@ -217,13 +379,19 @@ export default function App() {
     let unsubscribe = null;
 
     if (isAdminRoute) {
-      // ADMIN ROUTE: Live realtime Firestore subscription
+      // ADMIN ROUTE: Live realtime Firestore subscription (Strictly data only, no disruptive popups)
       unsubscribe = subscribeToTournament(
         (data) => {
           if (data) {
             if (Array.isArray(data.participants)) setParticipants(data.participants);
             if (Array.isArray(data.groups)) setGroups(data.groups);
-            if (Array.isArray(data.matches)) setMatches(data.matches);
+            if (Array.isArray(data.matches)) {
+              const map = new Map();
+              data.matches.forEach(m => map.set(m.id, { ...m }));
+              prevMatchesMapRef.current = map;
+              isInitialLoadCompletedRef.current = true;
+              setMatches(data.matches);
+            }
             if (data.config && typeof data.config === 'object') setConfig(data.config);
             setFirestoreStatus({ connected: true, error: null });
           }
@@ -247,7 +415,40 @@ export default function App() {
           if (data) {
             if (Array.isArray(data.participants)) setParticipants(data.participants);
             if (Array.isArray(data.groups)) setGroups(data.groups);
-            if (Array.isArray(data.matches)) setMatches(data.matches);
+            if (Array.isArray(data.matches)) {
+              // Detect newly completed matches with winners on feed update
+              if (isInitialLoadCompletedRef.current && prevMatchesMapRef.current.size > 0) {
+                const pMap = {};
+                (data.participants || participants).forEach(p => { pMap[p.id] = p; });
+                const newWinners = [];
+                data.matches.forEach(m => {
+                  const isCompletedNow = m.status === 'completed' || m.status === 'walkover';
+                  const prev = prevMatchesMapRef.current.get(m.id);
+                  const wasCompletedBefore = prev && (prev.status === 'completed' || prev.status === 'walkover');
+                  const isScoreChanged = prev && (
+                    prev.score1 !== m.score1 || 
+                    prev.score2 !== m.score2 || 
+                    prev.winnerId !== m.winnerId || 
+                    prev.penalty1 !== m.penalty1 || 
+                    prev.penalty2 !== m.penalty2 ||
+                    prev.status !== m.status
+                  );
+                  if ((isCompletedNow && !wasCompletedBefore) || (isCompletedNow && wasCompletedBefore && isScoreChanged)) {
+                    const cel = resolveCelebrationData(m, pMap);
+                    if (cel) newWinners.push(cel);
+                  }
+                });
+                if (newWinners.length > 0) {
+                  setCelebrationQueue(newWinners);
+                  setCelebrationIndex(0);
+                }
+              }
+              const map = new Map();
+              data.matches.forEach(m => map.set(m.id, { ...m }));
+              prevMatchesMapRef.current = map;
+              isInitialLoadCompletedRef.current = true;
+              setMatches(data.matches);
+            }
             if (data.config && typeof data.config === 'object') setConfig(data.config);
             setFirestoreStatus({ connected: true, error: null });
           }
@@ -258,18 +459,20 @@ export default function App() {
         }
       };
 
+      const currentIntervalSecs = getPublicRefreshIntervalSecs(config);
+
       if (isExpired) {
-        // Cooldown expired or first visit: fetch fresh data & reset 2-minute cycle
+        // Cooldown expired or first visit: fetch fresh data & reset cycle
         performPublicFetch();
-        const newNext = now + (PUBLIC_REFRESH_INTERVAL_SECS * 1000);
+        const newNext = now + (currentIntervalSecs * 1000);
         localStorage.setItem(STORAGE_NEXT_REFRESH_KEY, String(newNext));
         localStorage.setItem(STORAGE_LAST_REFRESH_KEY, String(now));
-        setPublicTimerSeconds(PUBLIC_REFRESH_INTERVAL_SECS);
+        setPublicTimerSeconds(currentIntervalSecs);
       } else {
         // Within cooldown: DO NOT make a network request! Instant render from local cache
         setIsInitialLoading(false);
         const remainingSecs = Math.max(1, Math.ceil((nextTime - now) / 1000));
-        setPublicTimerSeconds(remainingSecs);
+        setPublicTimerSeconds(Math.min(remainingSecs, currentIntervalSecs));
       }
     }
 
@@ -285,18 +488,20 @@ export default function App() {
     };
   }, [isAdminRoute]);
 
-  // Public 2-minute Countdown Interval with Auto-Refresh & LocalStorage Tracking
+  // Public Countdown Interval with Auto-Refresh & LocalStorage Tracking
   useEffect(() => {
     if (isAdminRoute) return;
+
+    const intervalSecs = getPublicRefreshIntervalSecs(config);
 
     const interval = setInterval(() => {
       const now = Date.now();
       const storedNext = localStorage.getItem(STORAGE_NEXT_REFRESH_KEY);
       let nextTime = storedNext ? Number(storedNext) : 0;
 
-      // Initialize next refresh timestamp if not present
-      if (!nextTime || isNaN(nextTime)) {
-        nextTime = now + (PUBLIC_REFRESH_INTERVAL_SECS * 1000);
+      // Initialize next refresh timestamp if not present or if nextTime exceeds current interval
+      if (!nextTime || isNaN(nextTime) || (nextTime - now > intervalSecs * 1000)) {
+        nextTime = now + (intervalSecs * 1000);
         localStorage.setItem(STORAGE_NEXT_REFRESH_KEY, String(nextTime));
         localStorage.setItem(STORAGE_LAST_REFRESH_KEY, String(now));
       }
@@ -304,11 +509,11 @@ export default function App() {
       const remaining = Math.ceil((nextTime - now) / 1000);
 
       if (remaining <= 0) {
-        // Timer reached 0! Advance 2-minute cycle and trigger background update
-        const newNext = Date.now() + (PUBLIC_REFRESH_INTERVAL_SECS * 1000);
+        // Timer reached 0! Advance cycle and trigger background update
+        const newNext = Date.now() + (intervalSecs * 1000);
         localStorage.setItem(STORAGE_NEXT_REFRESH_KEY, String(newNext));
         localStorage.setItem(STORAGE_LAST_REFRESH_KEY, String(Date.now()));
-        setPublicTimerSeconds(PUBLIC_REFRESH_INTERVAL_SECS);
+        setPublicTimerSeconds(intervalSecs);
         handleRefreshData(true); // silent auto-refresh
       } else {
         setPublicTimerSeconds(remaining);
@@ -316,7 +521,7 @@ export default function App() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isAdminRoute]);
+  }, [isAdminRoute, config?.publicRefreshIntervalMinutes]);
 
   // 2. Persist to local storage on changes (guarded against empty overwrite on initial mount)
   const isInitialMount = React.useRef(true);
@@ -389,6 +594,12 @@ export default function App() {
     }
   };
 
+  // Main Admin direct match schedule (time & day) updater
+  const handleAdminUpdateMatchSchedule = async (updatedMatch) => {
+    setMatches(prev => prev.map(m => m.id === updatedMatch.id ? updatedMatch : m));
+    await handleAtomicMatchUpdate([updatedMatch], `جاري مزامنة تعديل موعد ويوم المباراة #${updatedMatch.matchNumber} سحابياً...`);
+  };
+
   const handleAtomicTournamentUpdate = async (patchOrFn, actionMessage = 'جاري مزامنة وتأمين حفظ البيانات...') => {
     setIsSyncing(true);
     setSyncMessage(actionMessage);
@@ -414,7 +625,40 @@ export default function App() {
       if (data) {
         if (Array.isArray(data.participants)) setParticipants(data.participants);
         if (Array.isArray(data.groups)) setGroups(data.groups);
-        if (Array.isArray(data.matches)) setMatches(data.matches);
+        if (Array.isArray(data.matches)) {
+          // Detect newly completed matches with winners on public feed update only (Never for Admin)
+          if (!isAdminRoute && prevMatchesMapRef.current.size > 0) {
+            const pMap = {};
+            (data.participants || participants).forEach(p => { pMap[p.id] = p; });
+            const newWinners = [];
+            data.matches.forEach(m => {
+              const isCompletedNow = m.status === 'completed' || m.status === 'walkover';
+              const prev = prevMatchesMapRef.current.get(m.id);
+              const wasCompletedBefore = prev && (prev.status === 'completed' || prev.status === 'walkover');
+              const isScoreChanged = prev && (
+                prev.score1 !== m.score1 || 
+                prev.score2 !== m.score2 || 
+                prev.winnerId !== m.winnerId || 
+                prev.penalty1 !== m.penalty1 || 
+                prev.penalty2 !== m.penalty2 ||
+                prev.status !== m.status
+              );
+              if ((isCompletedNow && !wasCompletedBefore) || (isCompletedNow && wasCompletedBefore && isScoreChanged)) {
+                const cel = resolveCelebrationData(m, pMap);
+                if (cel) newWinners.push(cel);
+              }
+            });
+            if (newWinners.length > 0) {
+              setCelebrationQueue(newWinners);
+              setCelebrationIndex(0);
+            }
+          }
+          const map = new Map();
+          data.matches.forEach(m => map.set(m.id, { ...m }));
+          prevMatchesMapRef.current = map;
+          isInitialLoadCompletedRef.current = true;
+          setMatches(data.matches);
+        }
         if (data.config && typeof data.config === 'object') setConfig(data.config);
         setFirestoreStatus({ connected: true, error: null });
         if (!isSilent) {
@@ -435,14 +679,17 @@ export default function App() {
   };
 
   const handlePublicRefreshClick = () => {
+    const intervalSecs = getPublicRefreshIntervalSecs(config);
+    const minutesLabel = getPublicRefreshMinutesLabel(config);
+
     if (publicTimerSeconds > 0) {
-      showNotification(`التحديث التلقائي يعمل كل دقيقتين (المتبقي: ${formatTimerSecs(publicTimerSeconds)})`, 'info');
+      showNotification(`التحديث التلقائي يعمل كل ${minutesLabel} (المتبقي: ${formatTimerSecs(publicTimerSeconds)})`, 'info');
       return;
     }
-    const newNext = Date.now() + (PUBLIC_REFRESH_INTERVAL_SECS * 1000);
+    const newNext = Date.now() + (intervalSecs * 1000);
     localStorage.setItem(STORAGE_NEXT_REFRESH_KEY, String(newNext));
     localStorage.setItem(STORAGE_LAST_REFRESH_KEY, String(Date.now()));
-    setPublicTimerSeconds(PUBLIC_REFRESH_INTERVAL_SECS);
+    setPublicTimerSeconds(intervalSecs);
     handleRefreshData(false);
   };
 
@@ -514,34 +761,35 @@ export default function App() {
         <header className="public-header" style={{
           background: '#FFFFFF',
           borderBottom: '1px solid var(--border-light)',
-          padding: '12px 20px',
+          padding: '16px 20px',
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '12px',
+          justifyContent: 'center',
+          gap: '14px',
           position: 'sticky',
           top: 0,
           zIndex: 40,
           boxShadow: 'var(--shadow-sm)'
         }}>
-          {/* Brand: Only large official competition logo */}
-          <div style={{ display: 'flex', alignItems: 'center' }}>
+          {/* Centered & Large Official Competition Logo */}
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' }}>
             <img 
               src={logoUrl} 
               alt="شعار كأس السكن FC27" 
-              style={{ height: '64px', width: 'auto', objectFit: 'contain' }} 
+              className="brand-logo"
+              style={{ height: '100px', width: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 2px 10px rgba(0,0,0,0.06))' }} 
             />
           </div>
 
           {/* Action Bar */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            {/* 2-Minute Rate-Limited Update Timer Button */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', flexWrap: 'wrap', width: '100%' }}>
+            {/* Rate-Limited Update Timer Button */}
             <button
               className="btn btn-secondary btn-sm public-refresh-btn"
               onClick={handlePublicRefreshClick}
               disabled={isSyncing}
-              title={`تحديث تلقائي كل دقيقتين (المتبقي: ${formatTimerSecs(publicTimerSeconds)})`}
+              title={`تحديث تلقائي كل ${getPublicRefreshMinutesLabel(config)} (المتبقي: ${formatTimerSecs(publicTimerSeconds)})`}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -585,15 +833,37 @@ export default function App() {
               <span className="hide-on-mobile">{copiedShareLink ? 'تم النسخ!' : 'مشاركة'}</span>
             </button>
 
-            {/* Admin Entry Button */}
-            <button 
-              className="btn btn-secondary btn-sm"
-              onClick={handleNavigateToAdmin}
-              style={{ fontWeight: 600, fontSize: '0.78rem' }}
-              title="لوحة الإدارة للمنظمين"
-            >
-              لوحة الإدارة 🔒
-            </button>
+            {/* Interactive Celebration Launcher Button */}
+            {completedMatchesCount > 0 && (
+              <button 
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  const completedWithWinner = [...matches]
+                    .reverse()
+                    .find(m => (m.status === 'completed' || m.status === 'walkover') && (m.score1 !== m.score2 || m.winnerId || m.penalty1 !== m.penalty2));
+                  if (completedWithWinner) {
+                    handleLaunchCelebration(completedWithWinner);
+                  } else {
+                    showNotification('لا توجد مباريات منتهية بفوز لعرض الاحتفال حالياً', 'info');
+                  }
+                }}
+                title="مشاهدة احتفال الفوز التفاعلي بأحدث المباريات"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontWeight: 800,
+                  fontSize: '0.8rem',
+                  background: '#FEF9C3',
+                  borderColor: '#FDE047',
+                  color: '#854D0E',
+                  boxShadow: '0 1px 3px rgba(202, 138, 4, 0.12)'
+                }}
+              >
+                <Trophy size={14} color="#D97706" />
+                <span>احتفال الفوز 🎉</span>
+              </button>
+            )}
           </div>
         </header>
 
@@ -606,9 +876,36 @@ export default function App() {
             isPublicMode={true}
             onNotify={showNotification}
             onRefreshData={handleRefreshData}
+            onShowCelebration={handleLaunchCelebration}
             isLoading={isSyncing || (isInitialLoading && matches.length === 0)}
           />
         </main>
+
+        {/* Interactive Winning Celebration Modal with Corner-to-Corner Diagonal Motion */}
+        {celebrationQueue.length > 0 && celebrationQueue[celebrationIndex] && (
+          <WinningCelebrationModal
+            celebrationData={celebrationQueue[celebrationIndex]}
+            queueIndex={celebrationIndex}
+            queueTotal={celebrationQueue.length}
+            onNext={() => {
+              if (celebrationIndex < celebrationQueue.length - 1) {
+                setCelebrationIndex(prev => prev + 1);
+              } else {
+                setCelebrationQueue([]);
+                setCelebrationIndex(0);
+              }
+            }}
+            onPrev={() => {
+              if (celebrationIndex > 0) {
+                setCelebrationIndex(prev => prev - 1);
+              }
+            }}
+            onClose={() => {
+              setCelebrationQueue([]);
+              setCelebrationIndex(0);
+            }}
+          />
+        )}
 
         {/* Public Circular Loading Overlay with Competition Logo */}
         <SyncLoadingOverlay 
@@ -693,39 +990,43 @@ export default function App() {
         <header style={{
           background: '#FFFFFF',
           borderBottom: '1px solid var(--border-light)',
-          padding: '10px 18px',
+          padding: '16px 20px',
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '10px',
+          gap: '12px',
           boxShadow: 'var(--shadow-sm)'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <img src={logoUrl} alt="شعار البطولة" style={{ height: '54px', width: 'auto', objectFit: 'contain' }} />
-            <div>
-              <div style={{ fontWeight: 800, fontSize: '0.98rem', color: 'var(--ksu-green)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span>🎮 بوابة منظم الصالة والمباريات</span>
-                <span className="badge badge-green" style={{ fontSize: '0.7rem' }}>منظم معتمد</span>
-              </div>
-              <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>
-                إدارة الطوابير، رصد النتائج، وشجرة الإقصائيات
-              </div>
-            </div>
+          {/* Centered Large Official Logo */}
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' }}>
+            <img 
+              src={logoUrl} 
+              alt="شعار البطولة" 
+              className="brand-logo"
+              style={{ height: '96px', width: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 2px 10px rgba(0,0,0,0.06))' }} 
+            />
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span className="badge badge-gray numeric" style={{ fontSize: '0.75rem' }}>
-              {completedMatchesCount} / {matches.length} منتهية
-            </span>
-            <button 
-              className="btn btn-secondary btn-sm"
-              onClick={handleLockDashboard}
-              style={{ fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '5px' }}
-            >
-              <Lock size={13} />
-              <span>قفل اللوحة</span>
-            </button>
+          {/* Subheader Information & Actions */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', maxWidth: '1200px', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ fontWeight: 800, fontSize: '0.98rem', color: 'var(--ksu-green)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>🎮 بوابة منظم الصالة والمباريات</span>
+              <span className="badge badge-green" style={{ fontSize: '0.7rem' }}>منظم معتمد</span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span className="badge badge-gray numeric" style={{ fontSize: '0.75rem' }}>
+                {completedMatchesCount} / {matches.length} منتهية
+              </span>
+              <button 
+                className="btn btn-secondary btn-sm"
+                onClick={handleLockDashboard}
+                style={{ fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '5px' }}
+              >
+                <Lock size={13} />
+                <span>قفل اللوحة</span>
+              </button>
+            </div>
           </div>
         </header>
       ) : (
@@ -741,6 +1042,7 @@ export default function App() {
           onImportBackup={handleImportBackup}
           onViewPublic={handleNavigateToPublic}
           onLockDashboard={handleLockDashboard}
+          onOpenAdjustMatch={() => setShowAdjustMatchModal(true)}
         />
       )}
 
@@ -855,6 +1157,8 @@ export default function App() {
             setConfig={setConfig}
             onNotify={showNotification}
             onAtomicMatchUpdate={handleAtomicMatchUpdate}
+            userRole={userRole}
+            onOpenAdjustMatch={() => setShowAdjustMatchModal(true)}
           />
         )}
 
@@ -867,6 +1171,7 @@ export default function App() {
             config={config}
             setConfig={setConfig}
             onNotify={showNotification}
+            onOpenAdjustMatch={() => setShowAdjustMatchModal(true)}
           />
         )}
 
@@ -919,6 +1224,20 @@ export default function App() {
         message={syncMessage}
         subtext=""
       />
+
+      {/* Main Admin Only: Adjust Match Time & Day Modal */}
+      {userRole !== 'coordinator' && (
+        <AdminAdjustMatchModal
+          isOpen={showAdjustMatchModal}
+          onClose={() => setShowAdjustMatchModal(false)}
+          matches={matches}
+          participants={participants}
+          groups={groups}
+          config={config}
+          onUpdateMatch={handleAdminUpdateMatchSchedule}
+          onNotify={showNotification}
+        />
+      )}
     </div>
   );
 }

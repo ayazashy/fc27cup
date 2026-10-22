@@ -33,7 +33,9 @@ export default function MatchesTab({
   config,
   setConfig,
   onNotify,
-  onAtomicMatchUpdate
+  onAtomicMatchUpdate,
+  userRole = 'admin',
+  onOpenAdjustMatch
 }) {
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [reminderMatch, setReminderMatch] = useState(null);
@@ -207,10 +209,22 @@ export default function MatchesTab({
     if (dayFilter !== 'all' && String(m.dayNumber || 1) !== String(dayFilter)) return false;
 
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const p1 = participantsMap[m.player1Id]?.name?.toLowerCase() || '';
-      const p2 = participantsMap[m.player2Id]?.name?.toLowerCase() || '';
-      return p1.includes(q) || p2.includes(q);
+      const q = searchQuery.toLowerCase().trim();
+      const p1 = participantsMap[m.player1Id];
+      const p2 = participantsMap[m.player2Id];
+      const name1 = p1?.name?.toLowerCase() || '';
+      const name2 = p2?.name?.toLowerCase() || '';
+      const phone1 = (p1?.phone || '').replace(/\D/g, '');
+      const phone2 = (p2?.phone || '').replace(/\D/g, '');
+      const qDigits = q.replace(/\D/g, '');
+
+      const matchName = name1.includes(q) || name2.includes(q);
+      const matchPhone = qDigits.length >= 3 && (
+        phone1.includes(qDigits) || phone2.includes(qDigits) ||
+        phone1.endsWith(qDigits) || phone2.endsWith(qDigits)
+      );
+
+      return matchName || matchPhone;
     }
     return true;
   });
@@ -336,6 +350,18 @@ export default function MatchesTab({
               <Scale size={14} color="var(--ksu-green)" />
               <span>موازنة الطابور</span>
             </button>
+
+            {onOpenAdjustMatch && userRole !== 'coordinator' && (
+              <button 
+                className="btn btn-secondary btn-sm"
+                onClick={onOpenAdjustMatch}
+                style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.78rem', borderColor: '#86EFAC', color: '#065F46', background: '#F0FDF4' }}
+                title="تعديل موعد ويوم مباراة بالرقم ID (خاص بالإدارة الرئيسية)"
+              >
+                <Clock size={14} color="var(--ksu-green)" />
+                <span>تعديل موعد ويوم مباراة ⏰</span>
+              </button>
+            )}
           </div>
 
         </div>
@@ -706,7 +732,7 @@ export default function MatchesTab({
               <input 
                 type="text" 
                 className="form-input" 
-                placeholder="ابحث باسم الطالب أو الفريق..." 
+                placeholder="ابحث باسم اللاعب، الفريق، أو رقم الجوال..." 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />

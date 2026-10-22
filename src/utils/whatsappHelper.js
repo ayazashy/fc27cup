@@ -12,9 +12,15 @@ export function cleanWhatsAppPhone(phone) {
   return clean.replace(/\D/g, '');
 }
 
+import { parseTimeToMins, formatMinsToTime12 } from './tournamentEngine';
+
 export function formatEstimatedTimeStr(match) {
   if (match.status === 'live') {
     return 'المباراة جارية الآن على الجهاز! يرجى الحضور فوراً 🟢';
+  }
+  if (match.customTime) {
+    const mins = parseTimeToMins(match.customTime);
+    return `${formatMinsToTime12(mins)} (الموعد المحدد)`;
   }
   if (match.fixedSchedule?.timeStr) {
     return `${match.fixedSchedule.timeStr} (الموعد المقرر)`;

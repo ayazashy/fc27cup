@@ -3,7 +3,8 @@ import { Trophy, Award, Medal, ZoomIn, ZoomOut, RotateCcw, ChevronLeft, ChevronR
 import ScoreModal from './ScoreModal';
 import confetti from 'canvas-confetti';
 import AutoFitName from './AutoFitName';
-import { propagateWinnerInTree, syncKnockoutTreeWithGuarantees } from '../utils/tournamentEngine';
+import { getTeamLogoUrl, DEFAULT_UNKNOWN_LOGO } from '../utils/footballTeams';
+import { propagateWinnerInTree, syncKnockoutTreeWithGuarantees, getConsoleStatusMap } from '../utils/tournamentEngine';
 
 export default function KnockoutTree({ 
   matches, 
@@ -12,7 +13,9 @@ export default function KnockoutTree({
   groups = [],
   config = {},
   onNotify,
-  onAtomicMatchUpdate
+  onAtomicMatchUpdate,
+  isPublicMode = false,
+  onShowCelebration
 }) {
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(1);
@@ -35,6 +38,13 @@ export default function KnockoutTree({
   }, [matches, groups, participantsMap, config]);
 
   const knockoutMatches = syncedMatches.filter(m => m.stage !== 'group');
+
+  // Live console status map for Green (current) / Yellow (next) / Grey status theming
+  const consoleStatusMap = React.useMemo(() => {
+    const cCount = Number(config.consolesCount) || 5;
+    const koDay = Number(config.daysCount) || 2;
+    return getConsoleStatusMap(matches, cCount, 10, 15, true, config);
+  }, [matches, config]);
 
   // Canonical Stage Configuration & Tournament Hierarchy
   const STAGE_ORDER = ['r64', 'r32', 'r16', 'qf', 'sf', 'final'];
@@ -164,18 +174,43 @@ export default function KnockoutTree({
           <h2 style={{ fontSize: '1.4rem', fontWeight: 900, color: '#92400E', marginBottom: '2px' }}>
             🎉 بطل كأس السكن: FC27 🎉
           </h2>
-          <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-main)', marginTop: '4px' }}>
-            {champion.name}
-          </div>
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            نادي: {champion.team} | {champion.room}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '6px' }}>
+            {(() => {
+              const cLogo = getTeamLogoUrl(champion.team);
+              const cKnown = !!cLogo && cLogo !== DEFAULT_UNKNOWN_LOGO;
+              return (
+                <>
+                  {cLogo && (
+                    <img src={cLogo} alt={champion.team} title={champion.team} style={{ width: '32px', height: '32px', objectFit: 'contain' }} />
+                  )}
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                    {champion.name}
+                  </div>
+                  {!cKnown && champion.team && (
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>({champion.team})</span>
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           {runnerUp && (
             <div style={{ marginTop: '12px', display: 'inline-flex', alignItems: 'center', gap: '8px', background: '#FFFFFF', padding: '6px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
               <Medal size={16} color="#64748B" />
-              <span style={{ fontSize: '0.825rem', fontWeight: 600 }}>الوصيف (المركز الثاني):</span>
-              <b>{runnerUp.name} ({runnerUp.team})</b>
+              <span style={{ fontSize: '0.825rem', fontWeight: 600 }}>الوصيف:</span>
+              {(() => {
+                const rLogo = getTeamLogoUrl(runnerUp.team);
+                const rKnown = !!rLogo && rLogo !== DEFAULT_UNKNOWN_LOGO;
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {rLogo && (
+                      <img src={rLogo} alt={runnerUp.team} title={runnerUp.team} style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
+                    )}
+                    <b>{runnerUp.name}</b>
+                    {!rKnown && runnerUp.team && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>({runnerUp.team})</span>}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
@@ -363,10 +398,44 @@ export default function KnockoutTree({
                   {round.matches.map((m, mIdx) => {
                     const p1 = participantsMap[m.player1Id];
                     const p2 = participantsMap[m.player2Id];
+                    const cData = consoleStatusMap[m.consoleId || 1];
+                    const hasBothPlayers = !!(m.player1Id && m.player2Id);
+                    const isCur = hasBothPlayers && (m.status === 'live' || (cData && cData.currentMatch?.id === m.id));
+                    const isNxt = hasBothPlayers && !isCur && (cData && cData.nextMatch?.id === m.id);
                     const isFinished = m.status === 'completed' || m.status === 'walkover';
                     const isP1Winner = isFinished && m.winnerId === m.player1Id;
                     const isP2Winner = isFinished && m.winnerId === m.player2Id;
-                    const hasBothPlayers = m.player1Id && m.player2Id;
+                    const hasPenalties = m.penalty1 !== null && m.penalty1 !== undefined &&
+                                         m.penalty2 !== null && m.penalty2 !== undefined;
+
+                    const p1Logo = getTeamLogoUrl(p1?.team);
+                    const hasKnownLogo1 = !!p1Logo && p1Logo !== DEFAULT_UNKNOWN_LOGO;
+                    const showTeam1 = !hasKnownLogo1 && !!p1?.team;
+
+                    const p2Logo = getTeamLogoUrl(p2?.team);
+                    const hasKnownLogo2 = !!p2Logo && p2Logo !== DEFAULT_UNKNOWN_LOGO;
+                    const showTeam2 = !hasKnownLogo2 && !!p2?.team;
+
+                    // Dynamic Theme: Green (Live) / Yellow (Next) / Grey (Finished/Scheduled)
+                    let cardBg = '#FFFFFF';
+                    let cardBorder = hasBothPlayers ? '1.5px solid var(--border-strong)' : '1.5px dashed var(--border-strong)';
+                    let cardShadow = 'var(--shadow-sm)';
+
+                    if (isCur) {
+                      cardBg = '#ECFDF5';
+                      cardBorder = '2px solid #059669';
+                      cardShadow = '0 4px 14px rgba(5, 150, 105, 0.22)';
+                    } else if (isNxt) {
+                      cardBg = '#FEF9C3';
+                      cardBorder = '2px solid #CA8A04';
+                      cardShadow = '0 3px 10px rgba(202, 138, 4, 0.18)';
+                    } else if (isFinished) {
+                      cardBg = '#F8FAFC';
+                      cardBorder = '1.5px solid #CBD5E1';
+                    } else if (!hasBothPlayers) {
+                      cardBg = '#F8FAFC';
+                      cardBorder = '1.5px dashed #CBD5E1';
+                    }
 
                     return (
                       <div 
@@ -376,39 +445,82 @@ export default function KnockoutTree({
                         {/* Match Node Card */}
                         <div 
                           onClick={() => {
-                            if (hasBothPlayers) setSelectedMatch(m);
+                            if (isPublicMode) {
+                              if (isFinished && typeof onShowCelebration === 'function') {
+                                onShowCelebration(m);
+                              }
+                            } else if (hasBothPlayers) {
+                              setSelectedMatch(m);
+                            }
                           }}
                           style={{
-                            background: '#FFFFFF',
-                            border: hasBothPlayers ? '1.5px solid var(--border-strong)' : '1px dashed var(--border-strong)',
+                            background: cardBg,
+                            border: cardBorder,
                             borderRadius: '10px',
-                            boxShadow: 'var(--shadow-sm)',
+                            boxShadow: cardShadow,
                             overflow: 'hidden',
-                            cursor: hasBothPlayers ? 'pointer' : 'default',
+                            cursor: (isPublicMode ? (isFinished ? 'pointer' : 'default') : (hasBothPlayers ? 'pointer' : 'default')),
                             transition: 'all 0.15s ease',
-                            opacity: hasBothPlayers ? 1 : 0.75
+                            opacity: hasBothPlayers ? 1 : 0.8
                           }}
+                          title={
+                            isPublicMode && isFinished 
+                              ? "اضغط لمشاهدة احتفال الفوز والتفاعل المباشر 🎉" 
+                              : (hasBothPlayers && !isPublicMode ? "اضغط لتسجيل النتيجة" : undefined)
+                          }
                           onMouseEnter={(e) => {
-                            if (hasBothPlayers) {
+                            if (hasBothPlayers && !isCur) {
                               e.currentTarget.style.borderColor = 'var(--ksu-green)';
                               e.currentTarget.style.transform = 'translateY(-2px)';
                             }
                           }}
                           onMouseLeave={(e) => {
-                            if (hasBothPlayers) {
-                              e.currentTarget.style.borderColor = 'var(--border-strong)';
+                            if (hasBothPlayers && !isCur) {
+                              e.currentTarget.style.borderColor = cardBorder.split(' ')[2] || 'var(--border-strong)';
                               e.currentTarget.style.transform = 'translateY(0)';
                             }
                           }}
                         >
-                          {/* Match Top Bar */}
-                          <div style={{ padding: '4px 10px', background: 'var(--bg-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                            <span>مباراة #{m.matchNumber}</span>
-                            {isFinished ? (
-                              <span style={{ color: '#059669', fontWeight: 800 }}>منتهية ✓</span>
-                            ) : (
-                              <span>{hasBothPlayers ? 'جاهزة للعب' : (m.roundIndex === 0 ? 'بانتظار حسم التأهل' : 'بانتظار الفائز')}</span>
-                            )}
+                          {/* Match Top Bar with Device Indicator & Live Status */}
+                          <div style={{ 
+                            padding: '4px 10px', 
+                            background: isCur ? '#D1FAE5' : (isNxt ? '#FEF08A' : 'var(--bg-subtle)'), 
+                            display: 'flex', 
+                            justifyContent: 'space-between', 
+                            alignItems: 'center', 
+                            fontSize: '0.7rem', 
+                            borderBottom: '1px solid var(--border-light)' 
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ fontWeight: 800, color: 'var(--text-main)' }}>مباراة #{m.matchNumber}</span>
+                              {m.consoleId && (
+                                <span className="badge badge-gray" style={{ fontSize: '0.62rem', padding: '1px 5px', fontWeight: 800 }}>
+                                  جهاز {m.consoleId}
+                                </span>
+                              )}
+                            </div>
+
+                            <div>
+                              {isFinished ? (
+                                hasPenalties ? (
+                                  <span className="badge" style={{ fontSize: '0.62rem', color: '#B45309', background: '#FEF3C7', border: '1px solid #FDE68A', fontWeight: 800, padding: '1px 5px' }}>
+                                    ركلات ترجيح ({m.penalty1} - {m.penalty2})
+                                  </span>
+                                ) : (
+                                  <span style={{ color: '#059669', fontWeight: 800 }}>منتهية ✓</span>
+                                )
+                              ) : isCur ? (
+                                <span className="badge badge-green" style={{ fontSize: '0.68rem', fontWeight: 800, padding: '2px 6px' }}>
+                                  الآن 🟢
+                                </span>
+                              ) : isNxt ? (
+                                <span className="badge badge-gold" style={{ fontSize: '0.68rem', fontWeight: 800, padding: '2px 6px' }}>
+                                  التالية ⏳
+                                </span>
+                              ) : (
+                                <span style={{ color: 'var(--text-muted)' }}>{hasBothPlayers ? 'جاهزة للعب' : (m.roundIndex === 0 ? 'بانتظار المتأهل' : 'بانتظار الفائز')}</span>
+                              )}
+                            </div>
                           </div>
 
                           {/* Player 1 Row */}
@@ -416,28 +528,40 @@ export default function KnockoutTree({
                             display: 'flex', 
                             alignItems: 'center', 
                             justifyContent: 'space-between', 
-                            padding: '8px 12px',
+                            padding: '8px 10px',
                             background: isP1Winner ? '#F0FDF4' : 'transparent',
                             borderBottom: '1px solid var(--border-light)'
                           }}>
                             <div style={{ flex: 1, overflow: 'hidden' }}>
                               {p1 ? (
-                                <div>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <AutoFitName 
-                                      text={p1.name}
-                                      compact={true}
-                                      fontWeight={isP1Winner ? 800 : 700}
-                                      color={isP1Winner ? '#065F46' : 'var(--text-main)'}
-                                      align="right"
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  {p1Logo && (
+                                    <img 
+                                      src={p1Logo} 
+                                      alt={p1.team || 'فريق'} 
+                                      title={p1.team || ''} 
+                                      style={{ width: '22px', height: '22px', objectFit: 'contain', flexShrink: 0 }} 
                                     />
-                                    {m.isGuaranteed1 && (
-                                      <span className="badge badge-green" style={{ fontSize: '0.62rem', padding: '1px 5px', fontWeight: 800, flexShrink: 0 }}>
-                                        تأهل مؤكد ✓
-                                      </span>
+                                  )}
+                                  <div style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                      <AutoFitName 
+                                        text={p1.name}
+                                        compact={true}
+                                        fontWeight={isP1Winner ? 800 : 700}
+                                        color={isP1Winner ? '#065F46' : 'var(--text-main)'}
+                                        align="right"
+                                      />
+                                      {m.isGuaranteed1 && (
+                                        <span className="badge badge-green" style={{ fontSize: '0.6rem', padding: '1px 5px', fontWeight: 800, flexShrink: 0 }}>
+                                          تأهل مؤكد ✓
+                                        </span>
+                                      )}
+                                    </div>
+                                    {showTeam1 && (
+                                      <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', display: 'block', lineHeight: 1 }}>{p1.team}</span>
                                     )}
                                   </div>
-                                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{p1.team}</div>
                                 </div>
                               ) : (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
@@ -460,14 +584,29 @@ export default function KnockoutTree({
                               )}
                             </div>
 
-                            <span className="numeric" style={{ 
-                              fontWeight: 800, 
-                              fontSize: '1rem',
-                              color: isP1Winner ? '#065F46' : 'var(--text-main)',
-                              marginLeft: '8px'
-                            }}>
-                              {m.score1 !== null ? m.score1 : ''}
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '6px' }}>
+                              {hasPenalties && (
+                                <span className="numeric" style={{ 
+                                  fontSize: '0.72rem', 
+                                  fontWeight: 800, 
+                                  color: '#B45309',
+                                  background: '#FEF3C7',
+                                  border: '1px solid #FDE68A',
+                                  borderRadius: '4px',
+                                  padding: '0 4px',
+                                  lineHeight: '1.3'
+                                }}>
+                                  {m.penalty1}
+                                </span>
+                              )}
+                              <span className="numeric" style={{ 
+                                fontWeight: 800, 
+                                fontSize: '1rem',
+                                color: isP1Winner ? '#065F46' : 'var(--text-main)'
+                              }}>
+                                {m.score1 !== null ? m.score1 : ''}
+                              </span>
+                            </div>
                           </div>
 
                           {/* Player 2 Row */}
@@ -475,27 +614,39 @@ export default function KnockoutTree({
                             display: 'flex', 
                             alignItems: 'center', 
                             justifyContent: 'space-between', 
-                            padding: '8px 12px',
+                            padding: '8px 10px',
                             background: isP2Winner ? '#F0FDF4' : 'transparent'
                           }}>
                             <div style={{ flex: 1, overflow: 'hidden' }}>
                               {p2 ? (
-                                <div>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <AutoFitName 
-                                      text={p2.name}
-                                      compact={true}
-                                      fontWeight={isP2Winner ? 800 : 700}
-                                      color={isP2Winner ? '#065F46' : 'var(--text-main)'}
-                                      align="right"
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  {p2Logo && (
+                                    <img 
+                                      src={p2Logo} 
+                                      alt={p2.team || 'فريق'} 
+                                      title={p2.team || ''} 
+                                      style={{ width: '22px', height: '22px', objectFit: 'contain', flexShrink: 0 }} 
                                     />
-                                    {m.isGuaranteed2 && (
-                                      <span className="badge badge-green" style={{ fontSize: '0.62rem', padding: '1px 5px', fontWeight: 800, flexShrink: 0 }}>
-                                        تأهل مؤكد ✓
-                                      </span>
+                                  )}
+                                  <div style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                      <AutoFitName 
+                                        text={p2.name}
+                                        compact={true}
+                                        fontWeight={isP2Winner ? 800 : 700}
+                                        color={isP2Winner ? '#065F46' : 'var(--text-main)'}
+                                        align="right"
+                                      />
+                                      {m.isGuaranteed2 && (
+                                        <span className="badge badge-green" style={{ fontSize: '0.62rem', padding: '1px 5px', fontWeight: 800, flexShrink: 0 }}>
+                                          تأهل مؤكد ✓
+                                        </span>
+                                      )}
+                                    </div>
+                                    {showTeam2 && (
+                                      <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', display: 'block', lineHeight: 1 }}>{p2.team}</span>
                                     )}
                                   </div>
-                                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{p2.team}</div>
                                 </div>
                               ) : (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
@@ -518,14 +669,29 @@ export default function KnockoutTree({
                               )}
                             </div>
 
-                            <span className="numeric" style={{ 
-                              fontWeight: 800, 
-                              fontSize: '1rem',
-                              color: isP2Winner ? '#065F46' : 'var(--text-main)',
-                              marginLeft: '8px'
-                            }}>
-                              {m.score2 !== null ? m.score2 : ''}
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '6px' }}>
+                              {hasPenalties && (
+                                <span className="numeric" style={{ 
+                                  fontSize: '0.72rem', 
+                                  fontWeight: 800, 
+                                  color: '#B45309',
+                                  background: '#FEF3C7',
+                                  border: '1px solid #FDE68A',
+                                  borderRadius: '4px',
+                                  padding: '0 4px',
+                                  lineHeight: '1.3'
+                                }}>
+                                  {m.penalty2}
+                                </span>
+                              )}
+                              <span className="numeric" style={{ 
+                                fontWeight: 800, 
+                                fontSize: '1rem',
+                                color: isP2Winner ? '#065F46' : 'var(--text-main)'
+                              }}>
+                                {m.score2 !== null ? m.score2 : ''}
+                              </span>
+                            </div>
                           </div>
                         </div>
 
@@ -538,7 +704,7 @@ export default function KnockoutTree({
                               top: '50%',
                               width: '36px',
                               height: '2px',
-                              background: isFinished ? '#059669' : '#CBD5E1',
+                              background: isFinished ? '#059669' : (isCur ? '#10B981' : '#CBD5E1'),
                               zIndex: 1
                             }}
                           />

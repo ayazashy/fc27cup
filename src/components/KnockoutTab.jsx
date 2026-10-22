@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { Trophy, GitMerge, LayoutGrid, CheckCircle, MessageCircle, Star, Sliders, ChevronDown, ChevronUp, ShieldCheck } from 'lucide-react';
-import { generateKnockoutTree, calculateBestRunnersUp, propagateWinnerInTree } from '../utils/tournamentEngine';
-import { getTeamLogoUrl } from '../utils/footballTeams';
+import { Trophy, GitMerge, LayoutGrid, CheckCircle, MessageCircle, Star, Sliders, ChevronDown, ChevronUp, ShieldCheck, Monitor } from 'lucide-react';
+import { generateKnockoutTree, calculateBestRunnersUp, propagateWinnerInTree, getConsoleStatusMap } from '../utils/tournamentEngine';
+import { getTeamLogoUrl, DEFAULT_UNKNOWN_LOGO } from '../utils/footballTeams';
 import KnockoutTree from './KnockoutTree';
+import SportsMatchCard from './SportsMatchCard';
 import ScoreModal from './ScoreModal';
 import WhatsAppReminderModal from './WhatsAppReminderModal';
 
@@ -16,11 +17,12 @@ export default function KnockoutTab({
   onNotify,
   onAtomicMatchUpdate
 }) {
-  const [viewMode, setViewMode] = useState('tree'); // 'tree' or 'cards'
+  const [viewMode, setViewMode] = useState('tree'); // 'tree', 'consoles', or 'cards'
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [reminderMatch, setReminderMatch] = useState(null);
   const [showRunnersUpTable, setShowRunnersUpTable] = useState(false);
   const [showKoSettings, setShowKoSettings] = useState(false);
+  const [singleConsoleFilter, setSingleConsoleFilter] = useState('all');
 
   const participantsMap = useMemo(() => {
     const map = {};
@@ -28,7 +30,12 @@ export default function KnockoutTab({
     return map;
   }, [participants]);
 
-  const knockoutMatches = matches.filter(m => m.stage !== 'group');
+  const knockoutMatches = useMemo(() => matches.filter(m => m.stage !== 'group'), [matches]);
+  const consolesCount = Math.max(1, Number(config.consolesCount) || 5);
+
+  const consoleStatusMap = useMemo(() => {
+    return getConsoleStatusMap(knockoutMatches, consolesCount, 10, 15, true, config);
+  }, [knockoutMatches, consolesCount, config]);
 
   // Compute live Best Runners-Up standings across all groups
   const bestRunnersUpData = useMemo(() => {
@@ -119,7 +126,7 @@ export default function KnockoutTab({
             </button>
 
             {/* View Mode Toggle */}
-            <div style={{ display: 'flex', background: 'var(--bg-subtle)', padding: '3px', borderRadius: '8px' }}>
+            <div style={{ display: 'flex', background: 'var(--bg-subtle)', padding: '3px', borderRadius: '8px', gap: '2px' }}>
               <button 
                 className={`btn btn-sm ${viewMode === 'tree' ? 'btn-primary' : 'btn-secondary'}`}
                 style={{ padding: '5px 12px', border: 'none' }}
@@ -127,6 +134,14 @@ export default function KnockoutTab({
               >
                 <GitMerge size={14} />
                 شجرة الأدوار
+              </button>
+              <button 
+                className={`btn btn-sm ${viewMode === 'consoles' ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ padding: '5px 12px', border: 'none' }}
+                onClick={() => setViewMode('consoles')}
+              >
+                <Monitor size={14} />
+                توزيع الأجهزة ({consolesCount})
               </button>
               <button 
                 className={`btn btn-sm ${viewMode === 'cards' ? 'btn-primary' : 'btn-secondary'}`}
@@ -236,6 +251,7 @@ export default function KnockoutTab({
                   <tbody>
                     {bestRunnersUpData.runnersUp.map((ru) => {
                       const logo = getTeamLogoUrl(ru.team);
+                      const hasKnownLogo = !!logo && logo !== DEFAULT_UNKNOWN_LOGO;
                       return (
                         <tr key={ru.playerId} style={{ background: ru.isQualified ? '#F0FDF4' : 'transparent' }}>
                           <td style={{ textAlign: 'center', fontWeight: 800, color: ru.isQualified ? '#059669' : 'var(--text-muted)' }}>
@@ -244,11 +260,19 @@ export default function KnockoutTab({
                           <td>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               {logo && (
-                                <img src={logo} alt={ru.team} style={{ width: '20px', height: '20px', objectFit: 'contain' }} />
+                                <img 
+                                  src={logo} 
+                                  alt={ru.team || ''} 
+                                  title={ru.team || ''} 
+                                  style={{ width: '22px', height: '22px', objectFit: 'contain', flexShrink: 0 }}
+                                  onError={(e) => { e.target.src = DEFAULT_UNKNOWN_LOGO; }}
+                                />
                               )}
                               <div>
                                 <span style={{ fontWeight: 700, color: ru.isQualified ? '#065F46' : 'var(--text-main)' }}>{ru.playerName}</span>
-                                {ru.team && <span style={{ fontSize: '0.725rem', color: 'var(--text-dim)', display: 'block' }}>{ru.team}</span>}
+                                {(!hasKnownLogo && ru.team) && (
+                                  <span style={{ fontSize: '0.62rem', color: 'var(--text-dim)', display: 'block' }}>{ru.team}</span>
+                                )}
                               </div>
                             </div>
                           </td>
@@ -290,7 +314,7 @@ export default function KnockoutTab({
       </div>
 
       {/* Main Knockout Content */}
-      {viewMode === 'tree' ? (
+      {viewMode === 'tree' && (
         <KnockoutTree
           matches={matches}
           setMatches={setMatches}
@@ -300,71 +324,256 @@ export default function KnockoutTab({
           onNotify={onNotify}
           onAtomicMatchUpdate={onAtomicMatchUpdate}
         />
-      ) : (
-        /* Cards View Fallback */
-        <div className="matches-grid">
-          {knockoutMatches.map(match => {
-            const p1 = participantsMap[match.player1Id];
-            const p2 = participantsMap[match.player2Id];
-            const isCompleted = match.status === 'completed' || match.status === 'walkover';
-            const winner = match.winnerId ? participantsMap[match.winnerId] : null;
+      )}
 
-            return (
-              <div key={match.id} className="match-card" style={{ border: winner ? '1.5px solid #F59E0B' : '1px solid var(--border-light)' }}>
-                <div className="match-top-bar">
-                  <span style={{ fontWeight: 700 }}>مباراة #{match.matchNumber} {match.title ? `— ${match.title}` : ''}</span>
-                  {winner && (
-                    <span className="badge badge-gold">
-                      🏆 الفائز: {winner.name}
+      {/* Consoles View: Distributed across X devices with green / yellow / grey Sofascore cards */}
+      {viewMode === 'consoles' && (
+        <div>
+          {/* Console Filter Tabs */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', overflowX: 'auto', paddingBottom: '4px' }}>
+            <button
+              className={`btn btn-sm ${singleConsoleFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setSingleConsoleFilter('all')}
+              style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+            >
+              كافة الأجهزة ({consolesCount})
+            </button>
+            {Array.from({ length: consolesCount }, (_, i) => i + 1).map(cId => {
+              const cMatches = knockoutMatches.filter(m => (m.consoleId || 1) === cId);
+              const cDone = cMatches.filter(m => m.status === 'completed' || m.status === 'walkover').length;
+              return (
+                <button
+                  key={cId}
+                  className={`btn btn-sm ${singleConsoleFilter === String(cId) ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setSingleConsoleFilter(String(cId))}
+                  style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                >
+                  جهاز {cId} ({cDone}/{cMatches.length})
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Consoles Grid */}
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: singleConsoleFilter !== 'all' ? '1fr' : 'repeat(auto-fit, minmax(340px, 1fr))', 
+            gap: '16px' 
+          }}>
+            {(singleConsoleFilter === 'all' 
+              ? Array.from({ length: consolesCount }, (_, i) => i + 1) 
+              : [parseInt(singleConsoleFilter, 10)]
+            ).map(cId => {
+              const cData = consoleStatusMap[cId] || { matches: [], currentMatch: null, nextMatch: null, completedCount: 0, totalCount: 0 };
+              const current = cData.currentMatch;
+              const next = cData.nextMatch;
+              const p1 = current ? participantsMap[current.player1Id] : null;
+              const p2 = current ? participantsMap[current.player2Id] : null;
+              const nextP1 = next ? participantsMap[next.player1Id] : null;
+              const nextP2 = next ? participantsMap[next.player2Id] : null;
+
+              return (
+                <div key={cId} className="clean-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {/* Console Header */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '2px solid var(--border-light)', paddingBottom: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Monitor size={20} color="var(--ksu-green)" />
+                      <span style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--text-main)' }}>
+                        جهاز {cId} {cId === 1 ? '— المنصة الرئيسية (النهائي)' : ''}
+                      </span>
+                    </div>
+                    <span className="badge badge-gray numeric">
+                      {cData.completedCount} / {cData.totalCount} منتهية
                     </span>
-                  )}
-                </div>
-
-                <div className="match-opponents">
-                  <div className="match-player p1">
-                    <span className="player-name">{p1?.name || match.player1Placeholder || 'بانتظار حسم التأهل'}</span>
-                    <span className="player-team">{p1?.team}</span>
                   </div>
 
-                  <div className="match-score-badge">
-                    {match.score1 !== null && match.score2 !== null ? (
-                      <span>{match.score1} : {match.score2}</span>
+                  {/* 1. CURRENT MATCH (Live 🟢) */}
+                  <div style={{ 
+                    background: current ? '#ECFDF5' : '#F8FAFC', 
+                    border: current ? '2px solid #059669' : '1px dashed var(--border-strong)', 
+                    borderRadius: '10px', 
+                    padding: '12px',
+                    boxShadow: current ? '0 4px 12px rgba(5, 150, 105, 0.12)' : 'none'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <span style={{ fontWeight: 800, fontSize: '0.85rem', color: current ? '#065F46' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: current ? '#10B981' : '#CBD5E1', display: 'inline-block' }}></span>
+                        {current ? 'الجارية الآن على الجهاز' : 'لا توجد مباراة نشطة حالياً'}
+                      </span>
+                      {current && (
+                        <span className="badge badge-green" style={{ fontWeight: 800, fontSize: '0.75rem' }}>
+                          #{current.matchNumber} {current.title || ''}
+                        </span>
+                      )}
+                    </div>
+
+                    {current ? (
+                      <div>
+                        <SportsMatchCard 
+                          match={current}
+                          p1={p1}
+                          p2={p2}
+                          isCurrent={true}
+                          onSelectMatch={setSelectedMatch}
+                          onRemindMatch={setReminderMatch}
+                        />
+                        <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                          <button 
+                            className="btn btn-primary btn-sm"
+                            style={{ flex: 1, padding: '7px', fontWeight: 800 }}
+                            onClick={() => setSelectedMatch(current)}
+                          >
+                            ⚽ رصد نتيجة المباراة الحالية
+                          </button>
+                          {current.player1Id && current.player2Id && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              style={{ borderColor: '#25D366', color: '#065F46', display: 'flex', alignItems: 'center', gap: '4px' }}
+                              onClick={() => setReminderMatch(current)}
+                              title="إرسال تذكير واتساب"
+                            >
+                              <MessageCircle size={15} color="#25D366" />
+                              <span>واتساب</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     ) : (
-                      <span style={{ color: 'var(--text-dim)', fontSize: '0.9rem' }}>VS</span>
+                      <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', padding: '8px 0' }}>
+                        {cData.matches.length === 0 ? 'لم يتم تعيين مباريات لهذا الجهاز بعد' : 'اكتملت جميع مباريات هذا الجهاز ✓'}
+                      </div>
                     )}
                   </div>
 
-                  <div className="match-player p2">
-                    <span className="player-name">{p2?.name || match.player2Placeholder || 'بانتظار حسم التأهل'}</span>
-                    <span className="player-team">{p2?.team}</span>
+                  {/* 2. NEXT MATCH (التالية للاستعداد ⏳) */}
+                  {next && (
+                    <div style={{ 
+                      background: '#FEF9C3', 
+                      border: '1.5px solid #CA8A04', 
+                      borderRadius: '10px', 
+                      padding: '10px 12px',
+                      boxShadow: '0 2px 6px rgba(202, 138, 4, 0.08)'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#854D0E', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#EAB308', display: 'inline-block' }}></span>
+                          التالية للاستعداد:
+                        </span>
+                        <span className="badge badge-gold" style={{ fontSize: '0.7rem' }}>#{next.matchNumber} {next.title || ''}</span>
+                      </div>
+
+                      <SportsMatchCard 
+                        match={next}
+                        p1={nextP1}
+                        p2={nextP2}
+                        isNext={true}
+                        onSelectMatch={setSelectedMatch}
+                        onRemindMatch={setReminderMatch}
+                        compact={true}
+                      />
+                    </div>
+                  )}
+
+                  {/* 3. FULL QUEUE ON THIS CONSOLE */}
+                  <div style={{ marginTop: '2px' }}>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '8px' }}>
+                      طابور الإقصائيات على جهاز {cId} ({cData.matches.length} مباراة):
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '340px', overflowY: 'auto', paddingRight: '2px' }}>
+                      {cData.matches.map((m) => {
+                        const isCur = current && current.id === m.id;
+                        const isNxt = next && next.id === m.id;
+                        const isDone = m.status === 'completed' || m.status === 'walkover';
+                        const mp1 = participantsMap[m.player1Id];
+                        const mp2 = participantsMap[m.player2Id];
+
+                        return (
+                          <SportsMatchCard 
+                            key={m.id}
+                            match={m}
+                            p1={mp1}
+                            p2={mp2}
+                            isCurrent={isCur}
+                            isNext={isNxt}
+                            isDone={isDone}
+                            onSelectMatch={setSelectedMatch}
+                            onRemindMatch={setReminderMatch}
+                            compact={true}
+                          />
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
-                <div className="match-footer" style={{ justifyContent: 'space-between' }}>
-                  {match.player1Id && match.player2Id && !isCompleted ? (
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      style={{ borderColor: '#25D366', color: '#065F46', display: 'flex', alignItems: 'center', gap: '5px' }}
-                      onClick={() => setReminderMatch(match)}
-                      title="إرسال تذكير واتساب لموعد المباراة"
-                    >
-                      <MessageCircle size={14} color="#25D366" />
-                      <span>تذكير واتساب</span>
-                    </button>
-                  ) : <div />}
+      {/* Cards View: Grid with Device indicators and SportsMatchCards */}
+      {viewMode === 'cards' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+            <button
+              className={`btn btn-sm ${singleConsoleFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setSingleConsoleFilter('all')}
+              style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+            >
+              جميع الأجهزة ({knockoutMatches.length})
+            </button>
+            {Array.from({ length: consolesCount }, (_, i) => i + 1).map(cId => {
+              const cMatches = knockoutMatches.filter(m => (m.consoleId || 1) === cId);
+              return (
+                <button
+                  key={cId}
+                  className={`btn btn-sm ${singleConsoleFilter === String(cId) ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setSingleConsoleFilter(String(cId))}
+                  style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                >
+                  جهاز {cId} ({cMatches.length})
+                </button>
+              );
+            })}
+          </div>
 
-                  <button 
-                    className="btn btn-primary btn-sm"
-                    onClick={() => setSelectedMatch(match)}
-                    disabled={!match.player1Id || !match.player2Id}
-                  >
-                    {!match.player1Id || !match.player2Id ? 'بانتظار حسم المتأهلين' : (isCompleted ? 'تعديل النتيجة' : 'رصد نتيجة الإقصائيات')}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+          <div className="matches-grid">
+            {knockoutMatches
+              .filter(m => singleConsoleFilter === 'all' || (m.consoleId || 1) === parseInt(singleConsoleFilter, 10))
+              .map(match => {
+                const p1 = participantsMap[match.player1Id];
+                const p2 = participantsMap[match.player2Id];
+                const cData = consoleStatusMap[match.consoleId || 1];
+                const isCur = match.status === 'live' || (cData?.currentMatch?.id === match.id);
+                const isNxt = !isCur && (cData?.nextMatch?.id === match.id);
+                const isDone = match.status === 'completed' || match.status === 'walkover';
+
+                return (
+                  <div key={match.id} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', color: 'var(--text-muted)', padding: '0 4px' }}>
+                      <span style={{ fontWeight: 800 }}>مباراة #{match.matchNumber} {match.title ? `— ${match.title}` : ''}</span>
+                      {match.consoleId && (
+                        <span className="badge badge-gray" style={{ fontSize: '0.62rem', fontWeight: 800 }}>
+                          جهاز {match.consoleId}
+                        </span>
+                      )}
+                    </div>
+                    <SportsMatchCard
+                      match={match}
+                      p1={p1}
+                      p2={p2}
+                      isCurrent={isCur}
+                      isNext={isNxt}
+                      isDone={isDone}
+                      onSelectMatch={setSelectedMatch}
+                      onRemindMatch={setReminderMatch}
+                    />
+                  </div>
+                );
+              })}
+          </div>
         </div>
       )}
 

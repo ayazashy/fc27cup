@@ -16,7 +16,6 @@ export default function ParticipantsTab({
   // New Participant Form State
   const [newPlayer, setNewPlayer] = useState({
     name: '',
-    studentId: '',
     phone: '',
     team: 'الهلال'
   });
@@ -62,11 +61,9 @@ export default function ParticipantsTab({
     const created = {
       id,
       name: newPlayer.name.trim(),
-      studentId: newPlayer.studentId.trim() || `44${Math.floor(1000000 + Math.random() * 9000000)}`,
       phone: cleanPhone || '966500000000',
       displayPhone: newPlayer.phone.trim() || '—',
-      room: newPlayer.room.trim() || 'سكن الطلاب',
-      team: newPlayer.team.trim() || 'ريال مدريد',
+      team: (newPlayer.team || '').trim() || 'ريال مدريد',
       experience: newPlayer.experience || 'متوسط',
       status: 'confirmed',
       registeredAt: new Date().toISOString()
@@ -74,7 +71,7 @@ export default function ParticipantsTab({
 
     setParticipants(prev => [created, ...prev]);
     setShowAddModal(false);
-    setNewPlayer({ name: '', studentId: '', phone: '', team: 'ريال مدريد' });
+    setNewPlayer({ name: '', phone: '', team: 'ريال مدريد' });
     onNotify(`تمت إضافة اللاعب ${created.name} بنجاح!`, 'success');
   };
 
@@ -93,7 +90,6 @@ export default function ParticipantsTab({
         return {
           ...p,
           name: editingPlayer.name.trim(),
-          studentId: editingPlayer.studentId.trim() || p.studentId,
           phone: cleanPhone || p.phone,
           displayPhone: editingPlayer.displayPhone || editingPlayer.phone || p.displayPhone,
           team: editingPlayer.team || p.team
@@ -115,13 +111,11 @@ export default function ParticipantsTab({
 
   const handleExportCSV = () => {
     if (participants.length === 0) return;
-    const headers = ['الرقم', 'الاسم', 'الرقم الجامعي', 'الجوال', 'السكن', 'الفريق', 'الخبرة', 'الحالة'];
+    const headers = ['الرقم', 'الاسم', 'الجوال', 'الفريق', 'الخبرة', 'الحالة'];
     const rows = participants.map((p, i) => [
       i + 1,
       `"${p.name}"`,
-      `"${p.studentId}"`,
       `"${p.displayPhone || p.phone}"`,
-      `"${p.room}"`,
       `"${p.team}"`,
       `"${p.experience}"`,
       `"${p.status === 'confirmed' ? 'مؤكد' : 'احتياط'}"`
@@ -141,8 +135,8 @@ export default function ParticipantsTab({
     const q = searchQuery.toLowerCase();
     return (
       p.name?.toLowerCase().includes(q) ||
-      p.studentId?.includes(q) ||
-      p.room?.toLowerCase().includes(q) ||
+      p.phone?.includes(q) ||
+      p.displayPhone?.includes(q) ||
       p.team?.toLowerCase().includes(q)
     );
   });
@@ -189,7 +183,7 @@ export default function ParticipantsTab({
 
         <textarea
           className="form-textarea"
-          placeholder="الصق البيانات المنسوخة هنا (الاسم، الرقم الجامعي، رقم الجوال، العمارة والغرفة، الفريق المفضل...)"
+          placeholder="الصق البيانات المنسوخة هنا (الاسم، رقم الجوال، الفريق المفضل...)"
           value={pasteText}
           onChange={(e) => setPasteText(e.target.value)}
         />
@@ -216,7 +210,7 @@ export default function ParticipantsTab({
               type="text"
               className="form-input"
               style={{ paddingRight: '36px', fontSize: '0.875rem' }}
-              placeholder="بحث بالاسم، الرقم الجامعي، أو الغرفة..."
+              placeholder="بحث بالاسم أو رقم الجوال..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -236,7 +230,6 @@ export default function ParticipantsTab({
                 <tr>
                   <th style={{ width: '40px' }}>#</th>
                   <th>اسم المشارك</th>
-                  <th>الرقم الجامعي</th>
                   <th>الجوال / واتساب</th>
                   <th>النادي المختار</th>
                   <th style={{ textAlign: 'center', width: '100px' }}>إجراءات</th>
@@ -247,7 +240,6 @@ export default function ParticipantsTab({
                   <tr key={p.id}>
                     <td className="numeric" style={{ color: 'var(--text-dim)' }}>{idx + 1}</td>
                     <td style={{ fontWeight: 800 }}>{p.name}</td>
-                    <td className="numeric">{p.studentId}</td>
                     <td>
                       <a
                         href={`https://wa.me/${p.phone}`}
@@ -262,15 +254,24 @@ export default function ParticipantsTab({
                       </a>
                     </td>
                     <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <img 
-                          src={getTeamLogoUrl(p.team)} 
-                          alt={p.team} 
-                          style={{ width: '22px', height: '22px', objectFit: 'contain' }}
-                          onError={(e) => { e.target.src = DEFAULT_UNKNOWN_LOGO; }}
-                        />
-                        <span className="badge badge-gray" style={{ fontWeight: 700 }}>{p.team || 'فريق آخر'}</span>
-                      </div>
+                      {(() => {
+                        const logo = getTeamLogoUrl(p.team);
+                        const hasKnown = !!logo && logo !== DEFAULT_UNKNOWN_LOGO;
+                        return (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <img 
+                              src={logo} 
+                              alt={p.team || ''} 
+                              title={p.team || ''}
+                              style={{ width: '24px', height: '24px', objectFit: 'contain' }}
+                              onError={(e) => { e.target.src = DEFAULT_UNKNOWN_LOGO; }}
+                            />
+                            {(!hasKnown && p.team) && (
+                              <span className="badge badge-gray" style={{ fontWeight: 700, fontSize: '0.62rem' }}>{p.team}</span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td style={{ textAlign: 'center' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
@@ -328,27 +329,15 @@ export default function ParticipantsTab({
                   />
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>الرقم الجامعي:</label>
-                    <input 
-                      type="text" 
-                      className="form-input numeric" 
-                      placeholder="441012345"
-                      value={newPlayer.studentId}
-                      onChange={(e) => setNewPlayer({ ...newPlayer, studentId: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>رقم الجوال:</label>
-                    <input 
-                      type="text" 
-                      className="form-input numeric" 
-                      placeholder="0501234567"
-                      value={newPlayer.phone}
-                      onChange={(e) => setNewPlayer({ ...newPlayer, phone: e.target.value })}
-                    />
-                  </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>رقم الجوال:</label>
+                  <input 
+                    type="text" 
+                    className="form-input numeric" 
+                    placeholder="0501234567"
+                    value={newPlayer.phone}
+                    onChange={(e) => setNewPlayer({ ...newPlayer, phone: e.target.value })}
+                  />
                 </div>
 
                 <div>
@@ -404,25 +393,14 @@ export default function ParticipantsTab({
                   />
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>الرقم الجامعي:</label>
-                    <input 
-                      type="text" 
-                      className="form-input numeric" 
-                      value={editingPlayer.studentId}
-                      onChange={(e) => setEditingPlayer({ ...editingPlayer, studentId: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>رقم الجوال:</label>
-                    <input 
-                      type="text" 
-                      className="form-input numeric" 
-                      value={editingPlayer.displayPhone || editingPlayer.phone}
-                      onChange={(e) => setEditingPlayer({ ...editingPlayer, phone: e.target.value, displayPhone: e.target.value })}
-                    />
-                  </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>رقم الجوال:</label>
+                  <input 
+                    type="text" 
+                    className="form-input numeric" 
+                    value={editingPlayer.displayPhone || editingPlayer.phone}
+                    onChange={(e) => setEditingPlayer({ ...editingPlayer, phone: e.target.value, displayPhone: e.target.value })}
+                  />
                 </div>
 
                 <div>

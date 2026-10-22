@@ -28,6 +28,7 @@ import {
   calculateFixedMatchSchedule,
   formatMinsToTime12
 } from '../utils/tournamentEngine';
+import { getTeamLogoUrl, DEFAULT_UNKNOWN_LOGO } from '../utils/footballTeams';
 
 export default function ScheduleDaysTab({
   matches,
@@ -36,7 +37,8 @@ export default function ScheduleDaysTab({
   groups,
   config,
   setConfig,
-  onNotify
+  onNotify,
+  onOpenAdjustMatch
 }) {
   const [selectedDaysCount, setSelectedDaysCount] = useState(Number(config.tournamentDays) || 2);
   const [playerSearch, setPlayerSearch] = useState('');
@@ -222,7 +224,7 @@ export default function ScheduleDaysTab({
     return playerWorkloads.filter(w => 
       w.name?.toLowerCase().includes(q) || 
       w.team?.toLowerCase().includes(q) || 
-      w.studentId?.includes(q)
+      w.phone?.includes(q)
     );
   }, [playerWorkloads, playerSearch]);
 
@@ -240,12 +242,10 @@ export default function ScheduleDaysTab({
       'وقت البداية المقرر',
       'وقت النهاية المقرر',
       'اسم اللاعب 1',
-      'رقم هوية اللاعب 1',
-      'الغرفة 1',
+      'جوال اللاعب 1',
       'نادي اللاعب 1',
       'اسم اللاعب 2',
-      'رقم هوية اللاعب 2',
-      'الغرفة 2',
+      'جوال اللاعب 2',
       'نادي اللاعب 2',
       'نتيجة اللاعب 1',
       'نتيجة اللاعب 2',
@@ -306,12 +306,10 @@ export default function ScheduleDaysTab({
         sched?.timeStr || '',
         sched?.endTimeStr || '',
         p1.name || '',
-        p1.studentId || '',
-        p1.room || '',
+        p1.displayPhone || p1.phone || '',
         p1.team || '',
         p2.name || '',
-        p2.studentId || '',
-        p2.room || '',
+        p2.displayPhone || p2.phone || '',
         p2.team || '',
         m.score1 !== null && m.score1 !== undefined ? m.score1 : '',
         m.score2 !== null && m.score2 !== undefined ? m.score2 : '',
@@ -384,6 +382,18 @@ export default function ScheduleDaysTab({
               <Clock size={15} />
               <span>مواعيد البدء</span>
             </button>
+
+            {onOpenAdjustMatch && (
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={onOpenAdjustMatch}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', borderColor: '#86EFAC', color: '#065F46', background: '#F0FDF4' }}
+                title="تعديل موعد ويوم مباراة بالرقم ID (خاص بالإدارة الرئيسية)"
+              >
+                <Clock size={15} color="var(--ksu-green)" />
+                <span>تعديل موعد مباراة ⏰</span>
+              </button>
+            )}
 
             <button 
               className="btn btn-primary btn-sm"
@@ -1076,7 +1086,28 @@ export default function ScheduleDaysTab({
                 <tr key={w.playerId}>
                   <td className="numeric" style={{ fontWeight: 700 }}>{idx + 1}</td>
                   <td style={{ fontWeight: 800 }}>{w.name}</td>
-                  <td style={{ color: 'var(--text-muted)' }}>{w.team}</td>
+                  <td>
+                    {(() => {
+                      const logo = getTeamLogoUrl(w.team);
+                      const hasKnown = !!logo && logo !== DEFAULT_UNKNOWN_LOGO;
+                      return (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {logo && (
+                            <img 
+                              src={logo} 
+                              alt={w.team || ''} 
+                              title={w.team || ''} 
+                              style={{ width: '22px', height: '22px', objectFit: 'contain' }}
+                              onError={(e) => { e.target.src = DEFAULT_UNKNOWN_LOGO; }}
+                            />
+                          )}
+                          {(!hasKnown && w.team) && (
+                            <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>{w.team}</span>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </td>
                   {Array.from({ length: selectedDaysCount }, (_, i) => i + 1).map(d => (
                     <td key={d} className="numeric" style={{ textAlign: 'center', fontWeight: 800 }}>
                       <span 

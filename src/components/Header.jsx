@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trophy, Users, CheckCircle, Cloud, Download, Upload, Wifi, BarChart3, Tv, Lock } from 'lucide-react';
+import { Trophy, Users, CheckCircle, Cloud, Download, Upload, Wifi, BarChart3, Tv, Lock, Clock } from 'lucide-react';
 import logoUrl from '../utils/logo';
 
 export default function Header({ 
@@ -13,7 +13,8 @@ export default function Header({
   onExportBackup,
   onImportBackup,
   onViewPublic,
-  onLockDashboard
+  onLockDashboard,
+  onOpenAdjustMatch
 }) {
   const fileInputRef = React.useRef(null);
 
@@ -35,14 +36,14 @@ export default function Header({
 
   return (
     <header className="app-header">
-      <div className="header-inner">
-        {/* Brand Section with Official Tournament Logo */}
-        <div className="brand-section">
+      <div className="header-inner" style={{ flexDirection: 'column', alignItems: 'center', gap: '14px', padding: '14px 20px' }}>
+        {/* Brand Section with Official Tournament Logo (Centered & Large) */}
+        <div className="brand-section" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' }}>
           <img 
             src={logoUrl} 
             alt="شعار بطولة كأس السكن FC27" 
             className="brand-logo" 
-            style={{ height: '64px', width: 'auto', objectFit: 'contain' }}
+            style={{ height: '96px', width: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 2px 10px rgba(0,0,0,0.06))' }}
             onError={(e) => {
               e.currentTarget.style.display = 'none';
             }}
@@ -50,7 +51,7 @@ export default function Header({
         </div>
 
         {/* Quick Tournament Metrics & Cloud Actions */}
-        <div className="header-actions">
+        <div className="header-actions" style={{ justifyContent: 'center', width: '100%' }}>
           <div className="stat-pill" title="عدد اللاعبين المسجلين">
             <Users size={16} color="var(--ksu-green)" />
             <span>المسجلون:</span>
@@ -114,6 +115,19 @@ export default function Header({
             <Cloud size={16} />
             {isSaving ? 'جاري المزامنة...' : 'مزامنة السحابة'}
           </button>
+
+          {/* Adjust Match Schedule Modal Trigger */}
+          {onOpenAdjustMatch && (
+            <button 
+              className="btn btn-secondary btn-sm"
+              onClick={onOpenAdjustMatch}
+              title="تعديل موعد ويوم مباراة بالرقم ID"
+              style={{ display: 'flex', alignItems: 'center', gap: '5px' }}
+            >
+              <Clock size={15} color="var(--ksu-green)" />
+              <span>تعديل موعد مباراة ⏰</span>
+            </button>
+          )}
 
           {/* View Public Portal */}
           {onViewPublic && (

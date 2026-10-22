@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings, Check, Award, Shield, Monitor, Cloud, Copy, CheckCheck, AlertCircle, Clock, CalendarDays } from 'lucide-react';
+import { Settings, Check, Award, Shield, Monitor, Cloud, Copy, CheckCheck, AlertCircle, Clock, CalendarDays, RefreshCw } from 'lucide-react';
 import { computeCoordHash } from '../utils/securityGate';
 import { testFirestoreWriteAuthorization } from '../firebase';
 
@@ -425,6 +425,92 @@ service cloud.firestore {
                 />
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                   يشمل وقت التبديلات والأشواط الإضافية أو ركلات الجزاء (افتراضي: 15 دقيقة)
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <hr style={{ border: 'none', borderTop: '1px solid var(--border-light)' }} />
+
+          {/* Section: Public Users Auto-Update Refresh Rate */}
+          <div>
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <RefreshCw size={18} color="var(--ksu-green)" />
+              معدل التحديث التلقائي لصفحة الجمهور (بالدقائق)
+            </h3>
+
+            <div style={{ background: 'var(--bg-subtle)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '12px' }}>
+                <div style={{ flex: '1 1 240px' }}>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 700, marginBottom: '4px', color: 'var(--text-main)' }}>
+                    الفاصل الزمني لتحديث بيانات الجمهور:
+                  </label>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    يحدد عدد الدقائق بين كل عملية فحص وتحديث تلقائي لنتائج وجدول المباريات لدى الطلاب والزوار بدون إعادة تحميل الصفحة.
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input 
+                    type="number"
+                    min="1"
+                    max="60"
+                    className="form-input numeric"
+                    style={{ width: '90px', padding: '6px 10px', fontSize: '1rem', fontWeight: 800, textAlign: 'center' }}
+                    value={config.publicRefreshIntervalMinutes ?? 2}
+                    onChange={(e) => {
+                      const val = Math.max(1, Math.min(60, Number(e.target.value) || 1));
+                      handleChange('publicRefreshIntervalMinutes', val);
+                    }}
+                  />
+                  <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-main)' }}>دقيقة</span>
+                </div>
+              </div>
+
+              {/* Quick Preset Buttons */}
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px' }}>
+                  خيارات سريعة جاهزة:
+                </label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {[
+                    { mins: 1, label: '⚡ دقيقة واحدة (تحديث لحظي وسريع)' },
+                    { mins: 2, label: '⏱️ دقيقتان (الافتراضي المتوازن)' },
+                    { mins: 3, label: '🕒 3 دقائق' },
+                    { mins: 5, label: '⏳ 5 دقائق (لتقليل استهلاك السيرفر)' },
+                    { mins: 10, label: '⌛ 10 دقائق' }
+                  ].map(preset => {
+                    const isActive = (config.publicRefreshIntervalMinutes ?? 2) === preset.mins;
+                    return (
+                      <button
+                        key={preset.mins}
+                        type="button"
+                        className={`btn btn-sm ${isActive ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{ fontSize: '0.78rem', padding: '4px 10px' }}
+                        onClick={() => handleChange('publicRefreshIntervalMinutes', preset.mins)}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Dynamic Status Preview Box */}
+              <div style={{ 
+                background: '#FFFFFF', 
+                border: '1px solid #BBF7D0', 
+                borderRadius: '8px', 
+                padding: '10px 14px', 
+                fontSize: '0.8rem', 
+                color: '#166534',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <span style={{ fontSize: '1rem' }}>ℹ️</span>
+                <span>
+                  <b>الحالة الحالية:</b> سيتم تنشيط التحديث التلقائي وعداد المزامنة لدى صفحة الجمهور كل <b>{(config.publicRefreshIntervalMinutes ?? 2) === 1 ? 'دقيقة واحدة' : (config.publicRefreshIntervalMinutes ?? 2) === 2 ? 'دقيقتين' : `${config.publicRefreshIntervalMinutes ?? 2} دقائق`}</b> (ما يعادل <b>{((config.publicRefreshIntervalMinutes ?? 2) * 60)} ثانية</b>).
                 </span>
               </div>
             </div>

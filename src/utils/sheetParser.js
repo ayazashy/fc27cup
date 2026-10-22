@@ -24,7 +24,7 @@ export function parseGoogleSheetData(rawText) {
   });
 
   // Check if first row contains headers
-  const headerKeywords = ['اسم', 'name', 'رقم', 'جامعي', 'id', 'جوال', 'phone', 'عمارة', 'غرفة', 'فريق', 'club', 'team'];
+  const headerKeywords = ['اسم', 'name', 'جوال', 'phone', 'فريق', 'club', 'team'];
   const firstRowString = matrix[0].join(' ').toLowerCase();
   const hasHeader = headerKeywords.some(kw => firstRowString.includes(kw));
 
@@ -41,9 +41,7 @@ export function parseGoogleSheetData(rawText) {
   // Find column indices
   let colIndex = {
     name: -1,
-    studentId: -1,
     phone: -1,
-    room: -1,
     team: -1,
     experience: -1
   };
@@ -52,9 +50,7 @@ export function parseGoogleSheetData(rawText) {
     headers.forEach((h, idx) => {
       const col = h.toLowerCase();
       if ((col.includes('اسم') || col.includes('name')) && colIndex.name === -1) colIndex.name = idx;
-      else if ((col.includes('جامع') || col.includes('id') || col.includes('أكاديم')) && colIndex.studentId === -1) colIndex.studentId = idx;
       else if ((col.includes('جوال') || col.includes('هاتف') || col.includes('phone') || col.includes('واتس')) && colIndex.phone === -1) colIndex.phone = idx;
-      else if ((col.includes('عمار') || col.includes('غرف') || col.includes('سكن') || col.includes('room')) && colIndex.room === -1) colIndex.room = idx;
       else if ((col.includes('فريق') || col.includes('نادي') || col.includes('team') || col.includes('دوري')) && colIndex.team === -1) colIndex.team = idx;
       else if ((col.includes('خبر') || col.includes('مستو') || col.includes('exp')) && colIndex.experience === -1) colIndex.experience = idx;
     });
@@ -66,17 +62,13 @@ export function parseGoogleSheetData(rawText) {
     if (row.length === 0 || row.every(cell => !cell)) return;
 
     let name = '';
-    let studentId = '';
     let phone = '';
-    let room = '';
     let team = '';
     let experience = 'متوسط';
 
     if (hasHeader && colIndex.name !== -1) {
       name = row[colIndex.name] || '';
-      studentId = colIndex.studentId !== -1 ? row[colIndex.studentId] : '';
       phone = colIndex.phone !== -1 ? row[colIndex.phone] : '';
-      room = colIndex.room !== -1 ? row[colIndex.room] : '';
       team = colIndex.team !== -1 ? row[colIndex.team] : '';
       experience = colIndex.experience !== -1 ? row[colIndex.experience] : 'متوسط';
     } else {
@@ -86,14 +78,6 @@ export function parseGoogleSheetData(rawText) {
         // Check phone (starts with 05 or 9665 or +966)
         if (/^(05|\+?9665)\d{7,8}$/.test(clean.replace(/\s+/g, '')) && !phone) {
           phone = clean;
-        }
-        // Check student id (numeric string usually 8-10 digits, e.g. 441012345)
-        else if (/^\d{8,10}$/.test(clean) && !studentId) {
-          studentId = clean;
-        }
-        // Check room/housing (e.g. contains عمارة or 3-digit room)
-        else if ((clean.includes('عمارة') || clean.includes('غرفة') || /^\d{1,2}-\d{3}$/.test(clean)) && !room) {
-          room = clean;
         }
         // Check name (first long text with spaces)
         else if (!name && clean.length > 3 && !/^\d+$/.test(clean)) {
@@ -108,7 +92,6 @@ export function parseGoogleSheetData(rawText) {
 
     // Fallbacks if heuristic couldn't find
     if (!name && row[0]) name = row[0];
-    if (!studentId && row[1] && /^\d+$/.test(row[1])) studentId = row[1];
 
     if (!name.trim()) return;
 
@@ -123,10 +106,8 @@ export function parseGoogleSheetData(rawText) {
     parsedParticipants.push({
       id: `p_${Date.now()}_${rowIndex}_${Math.random().toString(36).substring(2, 6)}`,
       name: name.trim(),
-      studentId: studentId.trim() || `44${Math.floor(1000000 + Math.random() * 9000000)}`,
       phone: cleanPhone || '966500000000',
       displayPhone: phone.trim() || '—',
-      room: room.trim() || 'سكن الطلاب',
       team: team.trim() || 'ريال مدريد',
       experience: experience.trim() || 'متوسط',
       status: 'confirmed',
@@ -150,18 +131,13 @@ export function generateSampleKsuParticipants(count = 32) {
   for (let i = 0; i < count; i++) {
     const fn = firstNames[Math.floor(Math.random() * firstNames.length)];
     const ln = lastNames[Math.floor(Math.random() * lastNames.length)];
-    const building = Math.floor(1 + Math.random() * 25);
-    const room = Math.floor(101 + Math.random() * 320);
     const phoneDigit = Math.floor(1000000 + Math.random() * 9000000);
-    const studentNum = `44${Math.floor(1000000 + Math.random() * 9000000)}`;
 
     sampleList.push({
       id: `sample_p_${i + 1}`,
       name: `${fn} ${ln}`,
-      studentId: studentNum,
       phone: `9665${phoneDigit}`,
       displayPhone: `05${phoneDigit}`,
-      room: `عمارة ${building} - غرفة ${room}`,
       team: teams[i % teams.length],
       experience: experiences[i % experiences.length],
       status: 'confirmed',

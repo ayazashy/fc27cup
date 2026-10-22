@@ -118,10 +118,12 @@ body {
 }
 
 .brand-logo {
-  height: 54px;
+  height: 96px;
+  max-height: 110px;
   width: auto;
   object-fit: contain;
-  border-radius: var(--radius-sm);
+  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.08));
+  transition: all 0.2s ease;
 }
 
 .brand-text h1 {
@@ -719,7 +721,7 @@ body {
   }
 
   .brand-logo {
-    height: 38px;
+    height: 76px;
   }
 
   .brand-text h1 {
@@ -871,4 +873,600 @@ body {
     padding: 5px 8px !important;
   }
 }
+
+/* ==========================================================================
+   WINNING CELEBRATION MODAL (DIAGONAL CORNER-TO-CORNER ANIMATIONS)
+   ========================================================================== */
+
+.celebration-backdrop-container {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow: hidden;
+  background: 
+    radial-gradient(circle at 10% 10%, rgba(16, 185, 129, 0.45) 0%, transparent 50%),
+    radial-gradient(circle at 90% 90%, rgba(245, 158, 11, 0.42) 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, rgba(15, 23, 42, 0.82) 0%, rgba(11, 19, 43, 0.95) 100%);
+  background-size: 200% 200%;
+  animation: celebrationBackdropMove 8s ease-in-out infinite alternate;
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+}
+
+@keyframes celebrationBackdropMove {
+  0% { background-position: 0% 0%; }
+  100% { background-position: 100% 100%; }
+}
+
+/* Diagonal Laser Trail Streaking from Corner Top-Left to Corner Bottom-Right */
+.celebration-diagonal-laser {
+  position: absolute;
+  top: -60%;
+  left: -60%;
+  width: 220%;
+  height: 6px;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    rgba(16, 185, 129, 0.2) 20%, 
+    #34D399 45%, 
+    #FEF08A 50%, 
+    #FFFFFF 55%, 
+    #F59E0B 70%, 
+    transparent 100%
+  );
+  transform: rotate(45deg);
+  filter: drop-shadow(0 0 16px #34D399);
+  pointer-events: none;
+  animation: laserStreak 1.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes laserStreak {
+  0% {
+    transform: translate3d(-60%, -60%, 0) rotate(45deg);
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(50%, 50%, 0) rotate(45deg);
+    opacity: 0;
+  }
+}
+
+/* Floating Emoji Particles Layer */
+.celebration-floating-particles-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.celebration-float-particle {
+  position: absolute;
+  bottom: 15%;
+  animation: floatParticleRise 1.8s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+  pointer-events: none;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.3));
+}
+
+@keyframes floatParticleRise {
+  0% {
+    transform: translate3d(0, 0, 0) scale(0.4) rotate(0deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+    transform: translate3d(0, -30px, 0) scale(1.15) rotate(-8deg);
+  }
+  100% {
+    transform: translate3d(0, -320px, 0) scale(0.8) rotate(24deg);
+    opacity: 0;
+  }
+}
+
+/* Main Card Wrapper */
+.celebration-card-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 500px;
+  background: linear-gradient(145deg, 
+    rgba(255, 255, 255, 0.99) 0%, 
+    rgba(240, 253, 244, 0.97) 45%, 
+    rgba(254, 249, 195, 0.95) 100%
+  );
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 
+    0 25px 65px -12px rgba(0, 0, 0, 0.45),
+    0 0 50px rgba(16, 185, 129, 0.35),
+    0 0 90px rgba(245, 158, 11, 0.25),
+    inset 0 1px 2px rgba(255, 255, 255, 0.9);
+  border-radius: 22px;
+  padding: 20px 22px;
+  overflow: hidden;
+  direction: rtl;
+  z-index: 20;
+}
+
+/* Phase Transitions: Top-Left Corner to Bottom-Right Corner */
+.celebration-card-wrapper.phase-entering {
+  animation: diagonalSwoopIn 0.65s cubic-bezier(0.175, 0.885, 0.32, 1.15) forwards;
+}
+
+.celebration-card-wrapper.phase-hovering {
+  animation: diagonalFloat 3.6s ease-in-out infinite alternate;
+}
+
+.celebration-card-wrapper.phase-exiting {
+  animation: diagonalSwoopOut 0.45s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards;
+}
+
+@keyframes diagonalSwoopIn {
+  0% {
+    transform: translate3d(-100vw, -100vh, 0) scale(0.35) rotate(-16deg);
+    opacity: 0;
+    filter: blur(8px);
+  }
+  65% {
+    transform: translate3d(18px, 18px, 0) scale(1.03) rotate(1deg);
+    opacity: 1;
+    filter: blur(0);
+  }
+  85% {
+    transform: translate3d(-6px, -6px, 0) scale(0.99) rotate(-0.5deg);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes diagonalFloat {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(5px, 5px, 0);
+  }
+  100% {
+    transform: translate3d(-5px, -5px, 0);
+  }
+}
+
+@keyframes diagonalSwoopOut {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(100vw, 100vh, 0) scale(0.35) rotate(16deg);
+    opacity: 0;
+    filter: blur(6px);
+  }
+}
+
+/* Shimmer Light Sweep across card */
+.celebration-diagonal-shimmer {
+  position: absolute;
+  top: -100%;
+  left: -100%;
+  width: 300%;
+  height: 300%;
+  background: linear-gradient(
+    45deg, 
+    transparent 40%, 
+    rgba(255, 255, 255, 0.55) 50%, 
+    transparent 60%
+  );
+  animation: diagonalCardShimmer 3.2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes diagonalCardShimmer {
+  0% {
+    transform: translate3d(-40%, -40%, 0);
+  }
+  100% {
+    transform: translate3d(40%, 40%, 0);
+  }
+}
+
+/* Top Bar Controls */
+.celebration-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  position: relative;
+  z-index: 5;
+}
+
+.celebration-icon-btn, .celebration-close-btn {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-main);
+  transition: all 0.15s ease;
+}
+
+.celebration-icon-btn:hover, .celebration-close-btn:hover {
+  background: #FFFFFF;
+  transform: scale(1.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.celebration-close-btn:hover {
+  color: #DC2626;
+  border-color: #FCA5A5;
+}
+
+.celebration-queue-badge {
+  font-size: 0.72rem;
+  font-weight: 800;
+  background: #ECFDF5;
+  color: #065F46;
+  border: 1px solid #A7F3D0;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.celebration-stage-tag {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #92400E;
+  background: #FEF3C7;
+  border: 1px solid #FDE68A;
+  padding: 3px 9px;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+
+/* Spotlight Header */
+.celebration-spotlight-header {
+  text-align: center;
+  margin-bottom: 14px;
+  position: relative;
+  z-index: 5;
+}
+
+.celebration-trophy-halo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 66px;
+  height: 66px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #FEF08A 0%, #F59E0B 70%, #D97706 100%);
+  box-shadow: 
+    0 0 25px rgba(245, 158, 11, 0.6),
+    0 0 50px rgba(16, 185, 129, 0.3);
+  margin-bottom: 8px;
+  animation: pulseTrophyHalo 2s ease-in-out infinite alternate;
+}
+
+@keyframes pulseTrophyHalo {
+  0% { transform: scale(1); box-shadow: 0 0 20px rgba(245, 158, 11, 0.5); }
+  100% { transform: scale(1.08); box-shadow: 0 0 35px rgba(245, 158, 11, 0.85); }
+}
+
+.celebration-trophy-icon {
+  color: #FFFFFF;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.25));
+}
+
+.celebration-main-title {
+  font-size: 1.45rem;
+  font-weight: 900;
+  color: #065F46;
+  margin: 0 0 2px 0;
+  letter-spacing: -0.5px;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9);
+}
+
+.celebration-sub-title {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0;
+  font-weight: 600;
+}
+
+/* Winner Showcase Box */
+.celebration-winner-box {
+  background: #FFFFFF;
+  border: 1.5px solid #86EFAC;
+  border-radius: 16px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  position: relative;
+  box-shadow: 0 4px 16px rgba(5, 150, 105, 0.12);
+  z-index: 5;
+}
+
+.celebration-winner-content {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.celebration-logo-wrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.celebration-team-logo {
+  width: 58px;
+  height: 58px;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.15));
+  animation: floatLogo 3s ease-in-out infinite alternate;
+}
+
+@keyframes floatLogo {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-4px); }
+}
+
+.celebration-winner-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.celebration-winner-badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 800;
+  background: #047857;
+  color: #FFFFFF;
+  padding: 2px 7px;
+  border-radius: 6px;
+  margin-bottom: 4px;
+  letter-spacing: 0.3px;
+}
+
+.celebration-winner-name {
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: #0F172A;
+  line-height: 1.3;
+  margin-bottom: 2px;
+}
+
+.celebration-winner-team {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+/* Match Result Score Arena */
+.celebration-score-arena {
+  display: grid;
+  grid-templateColumns: 1fr auto 1fr;
+  align-items: center;
+  background: #FFFFFF;
+  border: 1.5px solid #CBD5E1;
+  border-radius: 14px;
+  padding: 10px 14px;
+  margin-bottom: 10px;
+  position: relative;
+  z-index: 5;
+}
+
+.celebration-score-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.celebration-score-side.winner-side .score-val {
+  color: #047857;
+  font-size: 1.7rem;
+  font-weight: 900;
+  text-shadow: 0 0 12px rgba(16, 185, 129, 0.3);
+}
+
+.celebration-score-side.loser-side .score-val {
+  color: #64748B;
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.score-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.celebration-score-divider {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 0 10px;
+}
+
+.score-vs {
+  font-size: 0.85rem;
+  font-weight: 900;
+  color: #94A3B8;
+}
+
+.celebration-penalty-badge {
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: #92400E;
+  background: #FEF3C7;
+  border: 1px solid #FDE68A;
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.celebration-walkover-badge {
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: #DC2626;
+  background: #FEE2E2;
+  border: 1px solid #FECACA;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+/* Opponent Sub Bar */
+.celebration-opponent-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 10px;
+  margin-bottom: 12px;
+  border: 1px solid #E2E8F0;
+  position: relative;
+  z-index: 5;
+}
+
+/* Interactive Reactions Section */
+.celebration-interactive-section {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid #E2E8F0;
+  border-radius: 14px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  position: relative;
+  z-index: 5;
+}
+
+.celebration-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  color: var(--text-main);
+  margin-bottom: 8px;
+}
+
+.celebration-reactions-grid {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.celebration-react-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: #FFFFFF;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 10px;
+  padding: 6px 4px;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.celebration-react-btn:hover {
+  transform: translateY(-3px) scale(1.05);
+  border-color: #10B981;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+}
+
+.celebration-react-btn:active {
+  transform: scale(0.92);
+}
+
+.celebration-react-btn.confetti-btn {
+  background: #FEF9C3;
+  border-color: #FDE047;
+}
+
+.celebration-react-btn.confetti-btn:hover {
+  border-color: #F59E0B;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25);
+}
+
+.react-emoji {
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.react-name {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.react-count {
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: #047857;
+}
+
+/* Bottom Actions & Timer Line */
+.celebration-bottom-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+  z-index: 5;
+}
+
+.celebration-timer-track {
+  width: 100%;
+  height: 4px;
+  background: #E2E8F0;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+.celebration-timer-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #10B981, #F59E0B);
+  transition: width 1s linear;
+}
+
+@media (max-width: 480px) {
+  .celebration-card-wrapper {
+    padding: 16px 14px;
+    border-radius: 18px;
+  }
+  .celebration-trophy-halo {
+    width: 54px;
+    height: 54px;
+  }
+  .celebration-trophy-icon {
+    width: 32px;
+    height: 32px;
+  }
+  .celebration-main-title {
+    font-size: 1.25rem;
+  }
+  .celebration-team-logo {
+    width: 46px;
+    height: 46px;
+  }
+  .celebration-winner-name {
+    font-size: 1.05rem;
+  }
+}
+
 

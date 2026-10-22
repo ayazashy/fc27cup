@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Shuffle, RefreshCw, Trophy, Shield, Printer, CheckCircle, ArrowLeftRight, X, UserPlus } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { generateGroupsAndMatches, calculateGroupStandings, fillIncompleteGroupsAndAddMatches } from '../utils/tournamentEngine';
+import { getTeamLogoUrl, DEFAULT_UNKNOWN_LOGO } from '../utils/footballTeams';
 
 export default function GroupsTab({ 
   groups, 
@@ -207,14 +208,33 @@ export default function GroupsTab({
                     <tbody>
                       {standings.map((st, sIdx) => {
                         const isQualified = sIdx < qualifiersCount;
+                        const logo = getTeamLogoUrl(st.team);
+                        const hasKnownLogo = !!logo && logo !== DEFAULT_UNKNOWN_LOGO;
                         return (
                           <tr key={st.playerId} className={isQualified ? 'qualifier-row' : ''}>
                             <td className="numeric" style={{ textAlign: 'center', fontWeight: isQualified ? 800 : 500 }}>
                               {sIdx + 1}
                             </td>
                             <td>
-                              <div style={{ fontWeight: 700 }}>{st.name}</div>
-                              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{st.team}</div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                {logo && (
+                                  <img 
+                                    src={logo} 
+                                    alt={st.team || ''} 
+                                    title={st.team || ''} 
+                                    style={{ width: '22px', height: '22px', objectFit: 'contain', flexShrink: 0 }}
+                                    onError={(e) => { e.target.src = DEFAULT_UNKNOWN_LOGO; }}
+                                  />
+                                )}
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{st.name}</div>
+                                  {(!hasKnownLogo && st.team) && (
+                                    <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                      {st.team}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
                             </td>
                             <td className="numeric">{st.played}</td>
                             <td className="numeric">{st.won}</td>

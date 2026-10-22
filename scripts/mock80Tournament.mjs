@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, setDoc } from 'firebase/firestore';
-import { generateKnockoutTree, splitMatchesIntoDays } from '../src/utils/tournamentEngine.js';
+import { generateKnockoutTree, splitMatchesIntoDays, propagateWinnerInTree } from '../src/utils/tournamentEngine.js';
 import { resolveCloudSecretToken } from '../src/firebase.js';
 
 // Decode Firebase config dynamically
@@ -52,16 +52,10 @@ for (let i = 1; i <= 80; i++) {
   const familyName = FAMILY_NAMES[(i * 5 + 13) % FAMILY_NAMES.length];
   const fullName = `${firstName} ${familyName}`;
   const team = POPULAR_TEAMS[(i - 1) % POPULAR_TEAMS.length];
-  const buildingNum = (i % 25) + 1;
-  const roomNum = 100 + ((i * 7) % 300) + ((i % 4) + 1);
-  const studentId = `443${String(10000 + i)}`;
-
   const participant = {
     id: `p_${i}`,
     name: fullName,
-    studentId: studentId,
     team: team,
-    room: `عمارة ${buildingNum} - غ ${roomNum}`,
     phone: `05${String(50000000 + i * 379).slice(0, 8)}`,
     status: 'active'
   };
@@ -201,8 +195,39 @@ bestRunnersUpData.runnersUp.filter(ru => ru.isQualified).forEach(ru => {
   console.log(`   #${ru.rank} ${ru.playerName} (${ru.shortName}) - ${ru.points} pts, GD: ${ru.goalDifference > 0 ? '+' : ''}${ru.goalDifference}`);
 });
 
+// Simulate completed r32 matches and 1 live match so Green, Yellow, Grey states are actively shown
+let updatedBracketMatches = [...bracketMatches];
+
+// Complete match 1 (Console 1)
+const m1 = updatedBracketMatches.find(m => m.id === 'ko_r32_1');
+if (m1 && m1.player1Id && m1.player2Id) {
+  m1.score1 = 3;
+  m1.score2 = 1;
+  m1.status = 'completed';
+  m1.winnerId = m1.player1Id;
+  updatedBracketMatches = propagateWinnerInTree(updatedBracketMatches, m1);
+}
+
+// Complete match 2 (Console 2) - decided by penalty shootout!
+const m2 = updatedBracketMatches.find(m => m.id === 'ko_r32_2');
+if (m2 && m2.player1Id && m2.player2Id) {
+  m2.score1 = 2;
+  m2.score2 = 2; // draw in regular time!
+  m2.penalty1 = 4;
+  m2.penalty2 = 5; // player 2 wins 5-4 on penalties
+  m2.status = 'completed';
+  m2.winnerId = m2.player2Id;
+  updatedBracketMatches = propagateWinnerInTree(updatedBracketMatches, m2);
+}
+
+// Set match 6 (Console 1) to Live 🟢
+const m6 = updatedBracketMatches.find(m => m.id === 'ko_r32_6');
+if (m6) {
+  m6.status = 'live';
+}
+
 // Combine all tournament matches
-const allTournamentMatches = [...groupMatches, ...bracketMatches];
+const allTournamentMatches = [...groupMatches, ...updatedBracketMatches];
 
 // 5. Upload Full State to Firestore
 const fullTournamentData = {
