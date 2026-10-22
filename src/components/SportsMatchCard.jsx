@@ -130,15 +130,15 @@ export default function SportsMatchCard({
       onClick={isClickable ? handleClick : undefined}
       style={{
         display: 'grid',
-        gridTemplateColumns: showRemindBtn ? '1fr auto 1fr auto' : '1fr auto 1fr',
+        gridTemplateColumns: showRemindBtn ? 'minmax(0, 1fr) auto minmax(0, 1fr) auto' : 'minmax(0, 1fr) auto minmax(0, 1fr)',
         alignItems: 'center',
-        padding: compact ? '5px 8px' : '8px 10px',
+        padding: compact ? '4px 6px' : '6px 8px',
         background: isCurrent ? '#ECFDF5' : (isNext ? '#FEF9C3' : (isCompleted ? '#F8FAFC' : '#FFFFFF')),
         border: `1.5px solid ${isCurrent ? '#059669' : (isNext ? '#CA8A04' : (isCompleted ? '#CBD5E1' : 'var(--border-light)'))}`,
         borderRadius: '8px',
         cursor: isClickable ? 'pointer' : 'default',
         transition: 'all 0.15s ease',
-        gap: compact ? '4px' : '8px',
+        gap: compact ? '4px' : '6px',
         width: '100%',
         boxSizing: 'border-box'
       }}
@@ -154,16 +154,16 @@ export default function SportsMatchCard({
         alignItems: 'center', 
         gap: '6px', 
         minWidth: 0, 
-        justifyContent: 'flex-end',
+        width: '100%',
         overflow: 'hidden'
       }}>
-        <div style={{ minWidth: 0, textAlign: 'left', flex: 1 }}>
+        <div style={{ minWidth: 0, textAlign: 'right', flex: 1 }}>
           <AutoFitName 
             text={p1?.name || match.player1Placeholder || 'اللاعب 1'}
             compact={compact}
             color={isCurrent ? '#065F46' : 'var(--text-main)'}
             fontWeight={800}
-            align="left"
+            align="right"
           />
           {showTeam1 && (
             <div style={{ 
@@ -172,7 +172,7 @@ export default function SportsMatchCard({
               whiteSpace: 'nowrap', 
               overflow: 'hidden', 
               textOverflow: 'ellipsis',
-              textAlign: 'left',
+              textAlign: 'right',
               marginTop: '1px'
             }}>
               {p1.team}
@@ -184,8 +184,8 @@ export default function SportsMatchCard({
             src={p1Logo} 
             alt={p1?.team || 'فريق 1'} 
             style={{ 
-              width: compact ? '22px' : '26px', 
-              height: compact ? '22px' : '26px', 
+              width: compact ? '22px' : '24px', 
+              height: compact ? '22px' : '24px', 
               objectFit: 'contain', 
               flexShrink: 0 
             }} 
@@ -193,8 +193,8 @@ export default function SportsMatchCard({
           />
         ) : (
           <div style={{ 
-            width: compact ? '22px' : '26px', 
-            height: compact ? '22px' : '26px', 
+            width: compact ? '22px' : '24px', 
+            height: compact ? '22px' : '24px', 
             borderRadius: '50%', 
             background: '#E2E8F0', 
             display: 'flex', 
@@ -209,7 +209,7 @@ export default function SportsMatchCard({
       </div>
 
       {/* Center: Score / Time / Status Badge */}
-      <div style={{ flexShrink: 0, padding: '0 4px', textAlign: 'center' }}>
+      <div style={{ flexShrink: 0, padding: '0 3px', textAlign: 'center' }}>
         {centerContent}
       </div>
 
@@ -219,7 +219,7 @@ export default function SportsMatchCard({
         alignItems: 'center', 
         gap: '6px', 
         minWidth: 0, 
-        justifyContent: 'flex-start', 
+        width: '100%',
         overflow: 'hidden'
       }}>
         {p2Logo ? (
@@ -227,8 +227,8 @@ export default function SportsMatchCard({
             src={p2Logo} 
             alt={p2?.team || 'فريق 2'} 
             style={{ 
-              width: compact ? '22px' : '26px', 
-              height: compact ? '22px' : '26px', 
+              width: compact ? '22px' : '24px', 
+              height: compact ? '22px' : '24px', 
               objectFit: 'contain', 
               flexShrink: 0 
             }} 
@@ -236,8 +236,8 @@ export default function SportsMatchCard({
           />
         ) : (
           <div style={{ 
-            width: compact ? '22px' : '26px', 
-            height: compact ? '22px' : '26px', 
+            width: compact ? '22px' : '24px', 
+            height: compact ? '22px' : '24px', 
             borderRadius: '50%', 
             background: '#E2E8F0', 
             display: 'flex', 
@@ -249,13 +249,13 @@ export default function SportsMatchCard({
             🎮
           </div>
         )}
-        <div style={{ minWidth: 0, textAlign: 'right', flex: 1 }}>
+        <div style={{ minWidth: 0, textAlign: 'left', flex: 1 }}>
           <AutoFitName 
             text={p2?.name || match.player2Placeholder || 'اللاعب 2'}
             compact={compact}
             color={isCurrent ? '#065F46' : 'var(--text-main)'}
             fontWeight={800}
-            align="right"
+            align="left"
           />
           {showTeam2 && (
             <div style={{ 
@@ -264,7 +264,7 @@ export default function SportsMatchCard({
               whiteSpace: 'nowrap', 
               overflow: 'hidden', 
               textOverflow: 'ellipsis',
-              textAlign: 'right',
+              textAlign: 'left',
               marginTop: '1px'
             }}>
               {p2.team}

@@ -787,7 +787,7 @@ export default function TvDisplayTab({
                     background: current ? '#ECFDF5' : 'var(--bg-subtle)', 
                     border: current ? '2px solid #059669' : '1px dashed var(--border-strong)', 
                     borderRadius: '10px', 
-                    padding: '12px' 
+                    padding: '8px 10px' 
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                       <span style={{ fontWeight: 800, fontSize: '0.85rem', color: current ? '#065F46' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -825,7 +825,7 @@ export default function TvDisplayTab({
                     background: '#FEF9C3', 
                     border: '1.5px solid #CA8A04', 
                     borderRadius: '10px', 
-                    padding: '10px 12px',
+                    padding: '8px 10px',
                     boxShadow: '0 2px 6px rgba(202, 138, 4, 0.08)'
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>

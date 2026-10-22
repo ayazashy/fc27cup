@@ -2,14 +2,14 @@ import React, { useRef, useState, useLayoutEffect, useEffect } from 'react';
 
 /**
  * AutoFitName
- * Dynamically shrinks the text font size so that the participant's full name
- * fits inside the available label container WITHOUT wrapping to multiple lines
- * and WITHOUT changing the screen ratio or card height.
+ * Dynamically fits the participant's full name inside the available label container
+ * by adjusting font size smoothly down to minFontSize if needed, without clipping
+ * or leaving phantom whitespace from CSS transform scales.
  */
 export default function AutoFitName({ 
-  text, 
-  maxFontSize = 1.05, // in rem (~16.8px, maximized, bold & prominent)
-  minFontSize = 0.80, // in rem (~12.8px, clear and readable)
+  text = '', 
+  maxFontSize = 1.05, // in rem (~16.8px, prominent, bold & clear)
+  minFontSize = 0.74, // in rem (~11.8px, readable minimum)
   compact = false,
   color = 'var(--text-main)',
   fontWeight = 800,
@@ -20,35 +20,40 @@ export default function AutoFitName({
   const textRef = useRef(null);
 
   const baseSize = compact ? 0.88 : maxFontSize;
-
-  // Start with full baseSize - do not prematurely shrink based on character count
   const [fontSize, setFontSize] = useState(baseSize);
-  const [scale, setScale] = useState(1);
+  const fontSizeRef = useRef(fontSize);
+  fontSizeRef.current = fontSize;
 
-  // Exact measurement & auto-shrink adjustment via useLayoutEffect
+  // Whenever text or baseSize changes, reset fontSize to baseSize
+  useEffect(() => {
+    setFontSize(baseSize);
+  }, [text, baseSize]);
+
+  // Exact measurement & auto-fit adjustment via useLayoutEffect
   useLayoutEffect(() => {
     const container = containerRef.current;
     const textEl = textRef.current;
     if (!container || !textEl || !text) return;
 
-    // Reset to baseSize first if text changed
     const containerWidth = container.clientWidth;
     const scrollWidth = textEl.scrollWidth;
 
-    if (containerWidth > 0 && scrollWidth > containerWidth) {
-      const ratio = (containerWidth - 1) / scrollWidth;
-      const targetSize = Math.max(minFontSize, fontSize * ratio);
-      
-      if (Math.abs(targetSize - fontSize) > 0.01) {
-        setFontSize(targetSize);
-      } else if (ratio < 0.99) {
-        // If already at minFontSize and still slightly exceeds, apply smooth CSS transform scale
-        setScale(Math.max(0.78, ratio));
+    if (containerWidth <= 0 || scrollWidth <= 0) return;
+
+    if (scrollWidth > containerWidth) {
+      // Shrunk proportionally to fit within container
+      const ratio = containerWidth / scrollWidth;
+      const target = Math.max(minFontSize, fontSize * ratio * 0.98);
+      if (Math.abs(target - fontSize) > 0.015) {
+        setFontSize(target);
       }
-    } else if (containerWidth > 0 && scrollWidth <= containerWidth * 0.85 && fontSize < baseSize) {
-      // Container has plenty of space: restore baseSize
-      setFontSize(baseSize);
-      setScale(1);
+    } else if (scrollWidth < containerWidth * 0.82 && fontSize < baseSize) {
+      // Container has extra space: allow expanding back up towards baseSize
+      const ratio = containerWidth / scrollWidth;
+      const target = Math.min(baseSize, fontSize * ratio * 0.95);
+      if (target > fontSize + 0.025) {
+        setFontSize(target);
+      }
     }
   }, [text, fontSize, baseSize, minFontSize]);
 
@@ -62,17 +67,27 @@ export default function AutoFitName({
       if (!textEl || !container || !text) return;
       const containerWidth = container.clientWidth;
       const scrollWidth = textEl.scrollWidth;
-      if (containerWidth > 0 && scrollWidth > containerWidth) {
-        const ratio = (containerWidth - 1) / scrollWidth;
-        setFontSize(prev => Math.max(minFontSize, prev * ratio));
+      if (containerWidth <= 0 || scrollWidth <= 0) return;
+
+      const currentSize = fontSizeRef.current;
+      if (scrollWidth > containerWidth) {
+        const ratio = containerWidth / scrollWidth;
+        const target = Math.max(minFontSize, currentSize * ratio * 0.98);
+        if (Math.abs(target - currentSize) > 0.015) {
+          setFontSize(target);
+        }
+      } else if (scrollWidth < containerWidth * 0.82 && currentSize < baseSize) {
+        const ratio = containerWidth / scrollWidth;
+        const target = Math.min(baseSize, currentSize * ratio * 0.95);
+        if (target > currentSize + 0.025) {
+          setFontSize(target);
+        }
       }
     });
 
     ro.observe(container);
     return () => ro.disconnect();
-  }, [minFontSize, text]);
-
-  const transformOrigin = align === 'left' ? 'left center' : 'right center';
+  }, [baseSize, minFontSize, text]);
 
   return (
     <div 
@@ -95,11 +110,11 @@ export default function AutoFitName({
           fontWeight,
           fontSize: `${fontSize.toFixed(3)}rem`,
           color,
-          transform: scale < 1 ? `scale(${scale.toFixed(3)})` : 'none',
-          transformOrigin,
-          transition: 'font-size 0.08s ease',
+          maxWidth: '100%',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
           verticalAlign: 'middle',
-          maxWidth: 'none'
+          transition: 'font-size 0.06s ease'
         }}
       >
         {text}
