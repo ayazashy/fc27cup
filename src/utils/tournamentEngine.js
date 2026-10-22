@@ -104,7 +104,11 @@ export function parseTimeToMins(timeStr) {
  */
 export function calculateFixedMatchSchedule(dayMatches, startTimeStr = '18:00', matchDurationMins = 12, breaks = []) {
   const startMins = parseTimeToMins(startTimeStr);
-  const parsedBreaks = (breaks || [])
+  const effectiveBreaks = (Array.isArray(breaks) && breaks.length > 0)
+    ? breaks
+    : [{ from: '19:00', to: '19:30' }];
+
+  const parsedBreaks = effectiveBreaks
     .filter(b => b && b.from && b.to)
     .map(b => ({ from: parseTimeToMins(b.from), to: parseTimeToMins(b.to) }))
     .filter(b => b.to > b.from)
@@ -120,18 +124,14 @@ export function calculateFixedMatchSchedule(dayMatches, startTimeStr = '18:00', 
   Object.values(consoleQueues).forEach(q => q.sort((a, b) => (a.orderOnConsole || 0) - (b.orderOnConsole || 0)));
 
   /**
-   * Given a proposed start time (in minutes since midnight), push it past any breaks that overlap.
+   * Given a proposed start time (in minutes since midnight), push it past any breaks that overlap,
+   * aligning to the tournament slot boundary so announced match times are strictly preserved.
    */
   const adjustForBreaks = (proposedStart) => {
     let adjusted = proposedStart;
     for (const brk of parsedBreaks) {
-      // If the match would start during a break, push to break end
-      if (adjusted >= brk.from && adjusted < brk.to) {
-        adjusted = brk.to;
-      }
-      // If the match would end inside a break (start before break, end during break), push to break end
-      if (adjusted < brk.from && adjusted + matchDurationMins > brk.from) {
-        adjusted = brk.to;
+      if ((adjusted >= brk.from && adjusted < brk.to) || (adjusted < brk.from && adjusted + matchDurationMins > brk.from)) {
+        adjusted = startMins + Math.ceil((brk.to - startMins) / matchDurationMins) * matchDurationMins;
       }
     }
     return adjusted;

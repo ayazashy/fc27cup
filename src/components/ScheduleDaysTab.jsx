@@ -88,7 +88,7 @@ export default function ScheduleDaysTab({
     for (let d = 1; d <= selectedDaysCount; d++) {
       const dayMatches = matches.filter(m => (m.dayNumber || 1) === d);
       const startTime = config.dayStartTimes?.[d] || '18:00';
-      const breaks = config.dayBreaks?.[d] || [];
+      const breaks = (config.dayBreaks?.[d] && config.dayBreaks[d].length > 0) ? config.dayBreaks[d] : [{ from: '19:00', to: '19:30' }];
       const avgDuration = Math.round(((Number(config.minMatchDuration) || 10) + (Number(config.maxMatchDuration) || 15)) / 2);
       result[d] = calculateFixedMatchSchedule(dayMatches, startTime, avgDuration, breaks);
     }
@@ -96,7 +96,7 @@ export default function ScheduleDaysTab({
     const koMatches = matches.filter(m => m.stage !== 'group' && !m.groupId);
     if (koMatches.length > 0) {
       const startTime = config.dayStartTimes?.knockout || '17:00';
-      const breaks = config.dayBreaks?.knockout || [];
+      const breaks = (config.dayBreaks?.knockout && config.dayBreaks.knockout.length > 0) ? config.dayBreaks.knockout : [{ from: '19:00', to: '19:30' }];
       const avgDuration = Math.round(((Number(config.minMatchDuration) || 10) + (Number(config.maxMatchDuration) || 15)) / 2);
       result['knockout'] = calculateFixedMatchSchedule(koMatches, startTime, avgDuration, breaks);
     }
@@ -452,7 +452,7 @@ export default function ScheduleDaysTab({
               {[...Array.from({ length: selectedDaysCount }, (_, i) => i + 1), 'knockout'].map(dayKey => {
                 const dayLabel = dayKey === 'knockout' ? 'يوم الإقصائيات 🏆' : `اليوم ${dayKey}`;
                 const startTime = config.dayStartTimes?.[dayKey] || '18:00';
-                const breaks = config.dayBreaks?.[dayKey] || [];
+                const breaks = (config.dayBreaks?.[dayKey] && config.dayBreaks[dayKey].length > 0) ? config.dayBreaks[dayKey] : [{ from: '19:00', to: '19:30' }];
                 const dayMatchCount = dayKey === 'knockout'
                   ? matches.filter(m => m.stage !== 'group' && !m.groupId).length
                   : matches.filter(m => (m.dayNumber || 1) === Number(dayKey)).length;

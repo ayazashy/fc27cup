@@ -182,7 +182,7 @@ export default function TvDisplayTab({
     for (let d = 1; d <= dCount; d++) {
       const dayMatches = matches.filter(m => (m.dayNumber || 1) === d && (m.stage === 'group' || !m.stage));
       const startTime = config.dayStartTimes?.[d] || '18:00';
-      const breaks = config.dayBreaks?.[d] || [];
+      const breaks = (config.dayBreaks?.[d] && config.dayBreaks[d].length > 0) ? config.dayBreaks[d] : [{ from: '19:00', to: '19:30' }];
       const sched = calculateFixedMatchSchedule(dayMatches, startTime, avgDuration, breaks);
       Object.assign(map, sched);
     }
@@ -190,7 +190,7 @@ export default function TvDisplayTab({
     const koMatches = matches.filter(m => m.stage && m.stage !== 'group' && !m.groupId);
     if (koMatches.length > 0) {
       const startTime = config.dayStartTimes?.knockout || config.dayStartTimes?.[2] || '17:00';
-      const breaks = config.dayBreaks?.knockout || [];
+      const breaks = (config.dayBreaks?.knockout && config.dayBreaks.knockout.length > 0) ? config.dayBreaks.knockout : [{ from: '19:00', to: '19:30' }];
       const sched = calculateFixedMatchSchedule(koMatches, startTime, avgDuration, breaks);
       Object.assign(map, sched);
     }
@@ -755,6 +755,10 @@ export default function TvDisplayTab({
             const nextP1 = next ? participantsMap[next.player1Id] : null;
             const nextP2 = next ? participantsMap[next.player2Id] : null;
 
+            const now = new Date();
+            const nowMins = now.getHours() * 60 + now.getMinutes();
+            const isCurrentlyInBreak = isTvDayActive && (nowMins >= 1140 && nowMins < 1170);
+
             return (
               <div key={cId} className="clean-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: 0 }}>
                 {/* Device Title */}
@@ -784,15 +788,30 @@ export default function TvDisplayTab({
                   </div>
                 ) : (
                   <div style={{ 
-                    background: current ? '#ECFDF5' : 'var(--bg-subtle)', 
-                    border: current ? '2px solid #059669' : '1px dashed var(--border-strong)', 
+                    background: current ? '#ECFDF5' : (isCurrentlyInBreak ? '#FEF9C3' : 'var(--bg-subtle)'), 
+                    border: current ? '2px solid #059669' : (isCurrentlyInBreak ? '2px solid #CA8A04' : '1px dashed var(--border-strong)'), 
                     borderRadius: '10px', 
                     padding: '8px 10px' 
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                      <span style={{ fontWeight: 800, fontSize: '0.85rem', color: current ? '#065F46' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: current ? '#10B981' : '#CBD5E1', display: 'inline-block' }}></span>
-                        {current ? 'الجارية الآن على الجهاز' : 'لا توجد مباراة نشطة'}
+                      <span style={{ 
+                        fontWeight: 800, 
+                        fontSize: '0.85rem', 
+                        color: current ? '#065F46' : (isCurrentlyInBreak ? '#854D0E' : 'var(--text-muted)'), 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '6px' 
+                      }}>
+                        <span style={{ 
+                          width: '9px', 
+                          height: '9px', 
+                          borderRadius: '50%', 
+                          background: current ? '#10B981' : (isCurrentlyInBreak ? '#EAB308' : '#CBD5E1'), 
+                          display: 'inline-block' 
+                        }}></span>
+                        {current 
+                          ? 'الجارية الآن على الجهاز' 
+                          : (isCurrentlyInBreak ? '⏸️ استراحة وصلاة العشاء الآن' : 'لا توجد مباراة نشطة')}
                       </span>
                       {current && (
                         <span className="badge badge-green" style={{ fontWeight: 800, fontSize: '0.75rem' }}>
@@ -812,9 +831,21 @@ export default function TvDisplayTab({
                         compact={false}
                       />
                     ) : (
-                      <div style={{ textAlign: 'center', padding: '16px 0', color: 'var(--text-dim)', fontSize: '0.85rem' }}>
-                        الجهاز متاح وجاهز للاستقبال ✓
-                      </div>
+                      isCurrentlyInBreak ? (
+                        <div style={{ textAlign: 'center', padding: '14px 10px', color: '#854D0E' }}>
+                          <div style={{ fontSize: '1.2rem', marginBottom: '4px' }}>⏸️</div>
+                          <div style={{ fontWeight: 800, fontSize: '0.88rem', marginBottom: '2px', color: '#92400E' }}>
+                            فترة استراحة وصلاة العشاء (7:00 م – 7:30 م)
+                          </div>
+                          <div style={{ fontSize: '0.74rem', color: '#B45309' }}>
+                            تُستأنف مباريات الجهاز في تمام الساعة 7:36 م بإذن الله
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ textAlign: 'center', padding: '16px 0', color: 'var(--text-dim)', fontSize: '0.85rem' }}>
+                          الجهاز متاح وجاهز للاستقبال ✓
+                        </div>
+                      )
                     )}
                   </div>
                 )}
@@ -862,25 +893,56 @@ export default function TvDisplayTab({
                       const mp1 = participantsMap[m.player1Id];
                       const mp2 = participantsMap[m.player2Id];
 
+                      // Detect break occurrence before this match:
+                      const prevMatch = idx > 0 ? cData.matches[idx - 1] : null;
+                      const curStart = m.estimatedTime?.startMins ?? fullScheduleMap[m.id]?.startMins;
+                      const prevEnd = prevMatch ? (prevMatch.estimatedTime?.endMins ?? fullScheduleMap[prevMatch.id]?.endMins) : null;
+                      const showBreakBanner = prevEnd && curStart && prevEnd <= 1140 && curStart >= 1170;
+
                       return (
-                        <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span className="numeric" style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-dim)', minWidth: '22px' }}>
-                            #{idx + 1}
-                          </span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <SportsMatchCard 
-                              match={m}
-                              p1={mp1}
-                              p2={mp2}
-                              isCurrent={isCur}
-                              isNext={isNext}
-                              isDone={isDone}
-                              compact={true}
-                              isPublicMode={isPublicMode}
-                              onShowCelebration={onShowCelebration}
-                            />
+                        <React.Fragment key={m.id}>
+                          {showBreakBanner && (
+                            <div style={{
+                              background: '#FEF9C3',
+                              border: '1.5px dashed #CA8A04',
+                              borderRadius: '8px',
+                              padding: '7px 10px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              color: '#854D0E',
+                              fontWeight: 800,
+                              fontSize: '0.78rem',
+                              margin: '3px 0'
+                            }}>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ fontSize: '0.9rem' }}>⏸️</span>
+                                <span>فترة استراحة وصلاة العشاء</span>
+                              </span>
+                              <span className="numeric" style={{ fontSize: '0.72rem', background: '#FEF08A', padding: '2px 8px', borderRadius: '4px', fontWeight: 800 }}>
+                                7:00 م – 7:30 م
+                              </span>
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span className="numeric" style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-dim)', minWidth: '22px' }}>
+                              #{idx + 1}
+                            </span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <SportsMatchCard 
+                                match={m}
+                                p1={mp1}
+                                p2={mp2}
+                                isCurrent={isCur}
+                                isNext={isNext}
+                                isDone={isDone}
+                                compact={true}
+                                isPublicMode={isPublicMode}
+                                onShowCelebration={onShowCelebration}
+                              />
+                            </div>
                           </div>
-                        </div>
+                        </React.Fragment>
                       );
                     })}
                   </div>

@@ -96,10 +96,10 @@ const DEFAULT_CONFIG = {
   },
   // Break intervals per day: [{from:"HH:MM", to:"HH:MM"}]
   dayBreaks: {
-    1: [],
-    2: [],
-    3: [],
-    knockout: []
+    1: [{ from: '19:00', to: '19:30' }],
+    2: [{ from: '19:00', to: '19:30' }],
+    3: [{ from: '19:00', to: '19:30' }],
+    knockout: [{ from: '19:00', to: '19:30' }]
   },
   activeDayOverride: null, // null = auto by current date, or 1, 2, etc.
   minMatchDuration: 10,
@@ -110,6 +110,22 @@ const DEFAULT_CONFIG = {
   coordinatorPinHash: 'e60d420bdb50f4a29ee9489a96a3aa94bfa4b37c0c52a822564abb3a2213564b'
 };
 
+// Helper: Ensure break intervals (7:00 PM - 7:30 PM) exist across all tournament days
+export function sanitizeConfigWithBreaks(loadedConfig) {
+  const merged = { ...DEFAULT_CONFIG, ...(loadedConfig || {}) };
+  delete merged.coordinatorPin;
+  if (!merged.dayBreaks || typeof merged.dayBreaks !== 'object') {
+    merged.dayBreaks = { ...DEFAULT_CONFIG.dayBreaks };
+  } else {
+    [1, 2, 3, 'knockout'].forEach(k => {
+      if (!Array.isArray(merged.dayBreaks[k]) || merged.dayBreaks[k].length === 0) {
+        merged.dayBreaks[k] = [{ from: '19:00', to: '19:30' }];
+      }
+    });
+  }
+  return merged;
+}
+
 // Helper: Read tournament cache synchronously from localStorage on initial load
 function getInitialTournamentData() {
   try {
@@ -117,10 +133,7 @@ function getInitialTournamentData() {
     if (cached) {
       const parsed = JSON.parse(cached);
       if (parsed && typeof parsed === 'object') {
-        const loadedConfig = (parsed.config && typeof parsed.config === 'object')
-          ? { ...DEFAULT_CONFIG, ...parsed.config }
-          : DEFAULT_CONFIG;
-        delete loadedConfig.coordinatorPin;
+        const loadedConfig = sanitizeConfigWithBreaks(parsed.config);
         return {
           participants: Array.isArray(parsed.participants) ? parsed.participants : [],
           groups: Array.isArray(parsed.groups) ? parsed.groups : [],
@@ -393,7 +406,7 @@ export default function App() {
               isInitialLoadCompletedRef.current = true;
               setMatches(data.matches);
             }
-            if (data.config && typeof data.config === 'object') setConfig(data.config);
+            if (data.config && typeof data.config === 'object') setConfig(sanitizeConfigWithBreaks(data.config));
             setFirestoreStatus({ connected: true, error: null });
           }
           setIsInitialLoading(false);
@@ -450,7 +463,7 @@ export default function App() {
               isInitialLoadCompletedRef.current = true;
               setMatches(data.matches);
             }
-            if (data.config && typeof data.config === 'object') setConfig(data.config);
+            if (data.config && typeof data.config === 'object') setConfig(sanitizeConfigWithBreaks(data.config));
             setFirestoreStatus({ connected: true, error: null });
           }
         } catch (err) {
@@ -678,7 +691,7 @@ export default function App() {
           isInitialLoadCompletedRef.current = true;
           setMatches(data.matches);
         }
-        if (data.config && typeof data.config === 'object') setConfig(data.config);
+        if (data.config && typeof data.config === 'object') setConfig(sanitizeConfigWithBreaks(data.config));
         setFirestoreStatus({ connected: true, error: null });
         if (!isSilent) {
           showNotification('تم تحديث البيانات بنجاح! ⚡', 'success');
