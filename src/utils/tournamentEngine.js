@@ -139,8 +139,21 @@ export function calculateFixedMatchSchedule(dayMatches, startTimeStr = '18:00', 
 
   const result = {};
   Object.entries(consoleQueues).forEach(([cid, queue]) => {
+    // 1. Precompute strict baseline sequential timeline slots for this console queue
+    // Every match retains its natural slot order (e.g. 18:00, 18:12, 18:24...)
     let cursorMins = startMins;
-    queue.forEach(m => {
+    const baselineSlots = queue.map(() => {
+      const slotStart = adjustForBreaks(cursorMins);
+      const slotEnd = slotStart + matchDurationMins;
+      cursorMins = slotEnd;
+      return { startMins: slotStart, endMins: slotEnd };
+    });
+
+    // 2. Assign times strictly:
+    //    - If a match has an explicit customTime, pin it to customTime.
+    //    - Otherwise, use the baseline slot for its queue position.
+    //    CRITICAL: Never advance cursorMins or shift any other match because of a customTime!
+    queue.forEach((m, idx) => {
       if (m.customTime) {
         const customStart = parseTimeToMins(m.customTime);
         const slotEnd = customStart + matchDurationMins;
@@ -151,20 +164,18 @@ export function calculateFixedMatchSchedule(dayMatches, startTimeStr = '18:00', 
           endTimeStr: formatMinsToTime12(slotEnd),
           isCustom: true
         };
-        if (slotEnd > cursorMins) {
-          cursorMins = slotEnd;
-        }
       } else {
-        const slotStart = adjustForBreaks(cursorMins);
-        const slotEnd = slotStart + matchDurationMins;
+        const slot = baselineSlots[idx] || {
+          startMins: startMins + idx * matchDurationMins,
+          endMins: startMins + (idx + 1) * matchDurationMins
+        };
         result[m.id] = {
-          startMins: slotStart,
-          endMins: slotEnd,
-          timeStr: formatMinsToTime12(slotStart),
-          endTimeStr: formatMinsToTime12(slotEnd),
+          startMins: slot.startMins,
+          endMins: slot.endMins,
+          timeStr: formatMinsToTime12(slot.startMins),
+          endTimeStr: formatMinsToTime12(slot.endMins),
           isCustom: false
         };
-        cursorMins = slotEnd;
       }
     });
   });
@@ -249,12 +260,24 @@ export function rebalanceRemainingMatches(matches, consolesCount = 5, targetDay 
         let matchIdxToMove = -1;
         if (queues[minQueue.consoleId].matches.length === 0 && !queues[minQueue.consoleId].hasLive) {
           matchIdxToMove = sourceMatches.findIndex(
-            m => !livePlayerIds.has(m.player1Id) && !livePlayerIds.has(m.player2Id)
+            m => !m.customTime && !livePlayerIds.has(m.player1Id) && !livePlayerIds.has(m.player2Id)
           );
         }
 
         if (matchIdxToMove === -1) {
-          matchIdxToMove = sourceMatches.length - 1;
+          // Pick the last movable match that doesn't have an admin-customized time
+          for (let i = sourceMatches.length - 1; i >= 0; i--) {
+            if (!sourceMatches[i].customTime) {
+              matchIdxToMove = i;
+              break;
+            }
+          }
+        }
+
+        if (matchIdxToMove === -1) {
+          // If all matches on source device have custom times, do not force move
+          balanced = true;
+          break;
         }
 
         const [matchToMove] = sourceMatches.splice(matchIdxToMove, 1);

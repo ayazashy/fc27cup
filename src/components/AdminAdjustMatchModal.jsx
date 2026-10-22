@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Clock, Calendar, CalendarDays, Monitor, Search, Check, RotateCcw, Trophy, Shield, AlertCircle, ArrowLeftRight } from 'lucide-react';
+import { X, Clock, Calendar, CalendarDays, Monitor, Search, Check, RotateCcw, Trophy, Shield, AlertCircle, ArrowLeftRight, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { getTeamLogoUrl, DEFAULT_UNKNOWN_LOGO } from '../utils/footballTeams';
-import { parseTimeToMins, formatMinsToTime12 } from '../utils/tournamentEngine';
+import { parseTimeToMins, formatMinsToTime12, calculateFixedMatchSchedule } from '../utils/tournamentEngine';
 
 // Helper: Format date string to Arabic
 function formatArabicDate(dateStr) {
@@ -103,13 +103,158 @@ export default function AdminAdjustMatchModal({
     }
   }, [searchQuery, matches, filteredMatches]);
 
-  if (!isOpen) return null;
-
   const tournamentDaysCount = Number(config?.tournamentDays) || 2;
+  const consolesCount = Number(config?.consolesCount) || 5;
   const dayDates = config?.dayDates || {};
+
+  // Compute match duration in minutes
+  const matchDurationMins = useMemo(() => {
+    return Math.round(((Number(config?.minMatchDuration) || 10) + (Number(config?.maxMatchDuration) || 15)) / 2);
+  }, [config?.minMatchDuration, config?.maxMatchDuration]);
+
+  // Compute schedule of all OTHER matches for the selected day
+  const otherMatchesSchedule = useMemo(() => {
+    if (!selectedMatch) return {};
+    const d = Number(editedDay) || 1;
+    const isKnockout = selectedMatch.stage && selectedMatch.stage !== 'group' && !selectedMatch.groupId;
+    const dayKey = isKnockout ? 'knockout' : d;
+    const dayMatches = matches.filter(m => (m.dayNumber || 1) === d && m.id !== selectedMatch.id);
+    const startTime = config?.dayStartTimes?.[dayKey] || config?.dayStartTimes?.[d] || '18:00';
+    const breaks = config?.dayBreaks?.[dayKey] || config?.dayBreaks?.[d] || [];
+    return calculateFixedMatchSchedule(dayMatches, startTime, matchDurationMins, breaks);
+  }, [matches, selectedMatch, editedDay, config, matchDurationMins]);
+
+  // Real-time Device Availability & Conflict Detection across all X devices
+  const validationResult = useMemo(() => {
+    if (!selectedMatch || !editedTime || !editedTime.trim()) {
+      return {
+        hasCustomTime: false,
+        isValid: true,
+        deviceStatus: {},
+        selectedConflict: null,
+        allOccupied: false,
+        availableConsoles: [],
+        playerConflict: null,
+        breakConflict: null
+      };
+    }
+
+    const targetStart = parseTimeToMins(editedTime);
+    const targetEnd = targetStart + matchDurationMins;
+    const d = Number(editedDay) || 1;
+    const otherMatches = matches.filter(m => (m.dayNumber || 1) === d && m.id !== selectedMatch.id);
+
+    // 1. Device by device availability map across all X devices
+    const deviceStatus = {};
+    for (let c = 1; c <= consolesCount; c++) {
+      const cMatches = otherMatches.filter(m => (m.consoleId || 1) === c);
+      const conflicting = cMatches.find(m => {
+        const sched = otherMatchesSchedule[m.id];
+        if (!sched) return false;
+        // Overlap: max(start1, start2) < min(end1, end2)
+        return Math.max(targetStart, sched.startMins) < Math.min(targetEnd, sched.endMins);
+      });
+
+      if (conflicting) {
+        const sched = otherMatchesSchedule[conflicting.id];
+        const p1Name = participantsMap[conflicting.player1Id]?.name || conflicting.player1Placeholder || 'الطرف 1';
+        const p2Name = participantsMap[conflicting.player2Id]?.name || conflicting.player2Placeholder || 'الطرف 2';
+        deviceStatus[c] = {
+          available: false,
+          conflictMatch: conflicting,
+          conflictSched: sched,
+          label: `#${conflicting.matchNumber} (${sched.timeStr})`,
+          detail: `مباراة #${conflicting.matchNumber}: ${p1Name} ضد ${p2Name} (${sched.timeStr} - ${sched.endTimeStr})`
+        };
+      } else {
+        deviceStatus[c] = {
+          available: true,
+          label: 'متاح'
+        };
+      }
+    }
+
+    // 2. Selected Console Conflict
+    const selectedConsoleStatus = deviceStatus[editedConsole];
+    const selectedConflict = (selectedConsoleStatus && !selectedConsoleStatus.available) ? selectedConsoleStatus : null;
+
+    // 3. Are all consoles occupied at this time?
+    const allOccupied = Object.values(deviceStatus).length > 0 && Object.values(deviceStatus).every(s => !s.available);
+
+    // 4. Available consoles list
+    const availableConsoles = Object.keys(deviceStatus)
+      .map(Number)
+      .filter(c => deviceStatus[c]?.available);
+
+    // 5. Player Conflict check
+    const p1Id = selectedMatch.player1Id;
+    const p2Id = selectedMatch.player2Id;
+    let playerConflict = null;
+    if (p1Id || p2Id) {
+      const conflictingPlayerMatch = otherMatches.find(m => {
+        const isP1 = p1Id && (m.player1Id === p1Id || m.player2Id === p1Id);
+        const isP2 = p2Id && (m.player1Id === p2Id || m.player2Id === p2Id);
+        if (!isP1 && !isP2) return false;
+        const sched = otherMatchesSchedule[m.id];
+        if (!sched) return false;
+        return Math.max(targetStart, sched.startMins) < Math.min(targetEnd, sched.endMins);
+      });
+      if (conflictingPlayerMatch) {
+        const sched = otherMatchesSchedule[conflictingPlayerMatch.id];
+        const pName = (conflictingPlayerMatch.player1Id === p1Id || conflictingPlayerMatch.player2Id === p1Id)
+          ? (participantsMap[p1Id]?.name || 'اللاعب 1')
+          : (participantsMap[p2Id]?.name || 'اللاعب 2');
+        playerConflict = {
+          playerName: pName,
+          match: conflictingPlayerMatch,
+          sched
+        };
+      }
+    }
+
+    // 6. Break Conflict check
+    const isKnockout = selectedMatch.stage && selectedMatch.stage !== 'group' && !selectedMatch.groupId;
+    const dayKey = isKnockout ? 'knockout' : d;
+    const breaks = config?.dayBreaks?.[dayKey] || config?.dayBreaks?.[d] || [];
+    const breakConflict = breaks.find(b => {
+      const bFrom = parseTimeToMins(b.from);
+      const bTo = parseTimeToMins(b.to);
+      return Math.max(targetStart, bFrom) < Math.min(targetEnd, bTo);
+    });
+
+    const isValid = !selectedConflict && !allOccupied && !playerConflict;
+
+    return {
+      hasCustomTime: true,
+      targetStart,
+      targetEnd,
+      targetTimeStr: formatMinsToTime12(targetStart),
+      targetEndTimeStr: formatMinsToTime12(targetEnd),
+      deviceStatus,
+      selectedConflict,
+      allOccupied,
+      availableConsoles,
+      playerConflict,
+      breakConflict,
+      isValid
+    };
+  }, [selectedMatch, editedTime, editedConsole, editedDay, matches, config, matchDurationMins, otherMatchesSchedule, participantsMap, consolesCount]);
+
+  if (!isOpen) return null;
 
   const handleSave = async () => {
     if (!selectedMatch) return;
+    if (validationResult.hasCustomTime && !validationResult.isValid) {
+      if (validationResult.selectedConflict) {
+        if (onNotify) onNotify(`تعارض في الموعد: الجهاز ${editedConsole} مشغول في هذا التوقيت بمباراة #${validationResult.selectedConflict.conflictMatch.matchNumber}! يرجى اختيار جهاز متاح.`, 'error');
+      } else if (validationResult.allOccupied) {
+        if (onNotify) onNotify(`تعارض: جميع أجهزة البطولة (${consolesCount} أجهزة) مشغولة في هذا التوقيت! يرجى اختيار توقيت آخر.`, 'error');
+      } else if (validationResult.playerConflict) {
+        if (onNotify) onNotify(`تعارض في جدول اللاعبين: اللاعب ${validationResult.playerConflict.playerName} لديه مباراة أخرى في هذا التوقيت!`, 'error');
+      }
+      return;
+    }
+
     setIsSaving(true);
     try {
       const updatedMatch = {
@@ -553,7 +698,7 @@ export default function AdminAdjustMatchModal({
                     </span>
                   </div>
 
-                  {/* Console Selector */}
+                  {/* Console Selector Dropdown (Quick) */}
                   <div>
                     <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: '5px', color: 'var(--text-main)' }}>
                       🎮 جهاز البلايستيشن:
@@ -564,11 +709,17 @@ export default function AdminAdjustMatchModal({
                       onChange={(e) => setEditedConsole(Number(e.target.value))}
                       style={{ width: '100%', padding: '6px 10px', fontSize: '0.85rem', fontWeight: 700 }}
                     >
-                      {Array.from({ length: Number(config?.consolesCount) || 5 }, (_, i) => i + 1).map(c => (
-                        <option key={c} value={c}>
-                          جهاز {c}
-                        </option>
-                      ))}
+                      {Array.from({ length: consolesCount }, (_, i) => i + 1).map(c => {
+                        const devStatus = validationResult.deviceStatus[c];
+                        const label = validationResult.hasCustomTime 
+                          ? (devStatus?.available ? `جهاز ${c} (متاح ✓)` : `جهاز ${c} (${devStatus?.label || 'مشغول ✕'})`)
+                          : `جهاز ${c}`;
+                        return (
+                          <option key={c} value={c}>
+                            {label}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
                 </div>
@@ -595,6 +746,221 @@ export default function AdminAdjustMatchModal({
                     })}
                   </div>
                 </div>
+
+                {/* Device Availability Matrix across all X devices */}
+                <div style={{
+                  background: '#F8FAFC',
+                  border: '1px solid #E2E8F0',
+                  borderRadius: '10px',
+                  padding: '12px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                      <Monitor size={15} color="var(--ksu-green)" />
+                      <span>حالة الأجهزة الـ ({consolesCount}) في التوقيت المحدد:</span>
+                    </div>
+                    {validationResult.hasCustomTime && (
+                      <span style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                        color: validationResult.allOccupied ? '#DC2626' : (validationResult.availableConsoles.length > 0 ? '#16A34A' : '#64748B')
+                      }}>
+                        {validationResult.allOccupied 
+                          ? '⚠️ جميع الأجهزة مشغولة' 
+                          : `${validationResult.availableConsoles.length} من أصل ${consolesCount} متاحة`}
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: `repeat(${Math.min(consolesCount, 5)}, 1fr)`,
+                    gap: '8px'
+                  }}>
+                    {Array.from({ length: consolesCount }, (_, i) => i + 1).map(c => {
+                      const isSelected = Number(editedConsole) === c;
+                      const devStatus = validationResult.deviceStatus[c];
+                      const isAvail = !validationResult.hasCustomTime || (devStatus?.available !== false);
+
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setEditedConsole(c)}
+                          style={{
+                            padding: '8px 4px',
+                            borderRadius: '10px',
+                            border: isSelected
+                              ? (isAvail ? '2px solid #16A34A' : '2px solid #DC2626')
+                              : (isAvail ? '1.5px solid #CBD5E1' : '1.5px solid #FCA5A5'),
+                            background: isSelected
+                              ? (isAvail ? '#DCFCE7' : '#FEE2E2')
+                              : (isAvail ? '#FFFFFF' : '#FFF1F2'),
+                            color: isSelected
+                              ? (isAvail ? '#065F46' : '#991B1B')
+                              : (isAvail ? 'var(--text-main)' : '#9F1239'),
+                            cursor: 'pointer',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '3px',
+                            transition: 'all 0.15s ease',
+                            boxShadow: isSelected 
+                              ? (isAvail ? '0 0 0 3px rgba(34,197,94,0.2)' : '0 0 0 3px rgba(239,68,68,0.25)') 
+                              : 'none'
+                          }}
+                          title={devStatus?.detail || `جهاز ${c}`}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Monitor size={12} />
+                            <span style={{ fontSize: '0.82rem', fontWeight: 800 }}>جهاز {c}</span>
+                          </div>
+                          {validationResult.hasCustomTime ? (
+                            <span style={{
+                              fontSize: '0.64rem',
+                              fontWeight: 800,
+                              padding: '1px 5px',
+                              borderRadius: '4px',
+                              background: isAvail ? '#BBF7D0' : '#FECDD3',
+                              color: isAvail ? '#166534' : '#991B1B',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              {isAvail ? 'متاح ✓' : (devStatus?.label || 'مشغول ✕')}
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: '0.64rem', color: '#64748B' }}>
+                              {isSelected ? 'المحدد' : 'اختيار'}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Conflict Warnings & Availability Banners */}
+                {validationResult.hasCustomTime && (
+                  <div>
+                    {/* 1. Selected Device Conflict Banner */}
+                    {validationResult.selectedConflict && (
+                      <div style={{
+                        background: '#FEF2F2',
+                        border: '1.5px solid #F87171',
+                        borderRadius: '10px',
+                        padding: '10px 14px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#991B1B', fontWeight: 800, fontSize: '0.84rem' }}>
+                          <AlertTriangle size={18} color="#DC2626" />
+                          <span>تعارض في التوقيت على جهاز {editedConsole}!</span>
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: '#7F1D1D', lineHeight: 1.4 }}>
+                          هذا الجهاز محجوز بالفعل في هذا التوقيت بـ <b>{validationResult.selectedConflict.detail}</b>.
+                        </div>
+                        {validationResult.availableConsoles.length > 0 && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#065F46' }}>الأجهزة المتاحة الآن:</span>
+                            {validationResult.availableConsoles.map(ac => (
+                              <button
+                                key={ac}
+                                type="button"
+                                onClick={() => setEditedConsole(ac)}
+                                className="btn btn-sm btn-primary"
+                                style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '6px' }}
+                              >
+                                تحويل إلى جهاز {ac} ⚡
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 2. All Devices Occupied Alert */}
+                    {validationResult.allOccupied && (
+                      <div style={{
+                        background: '#FEF2F2',
+                        border: '1.5px solid #EF4444',
+                        borderRadius: '10px',
+                        padding: '10px 14px',
+                        color: '#991B1B',
+                        fontSize: '0.82rem',
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}>
+                        <AlertCircle size={20} color="#DC2626" />
+                        <span>تعارض كامل: جميع أجهزة البطولة ({consolesCount} أجهزة) مشغولة في هذا التوقيت ({validationResult.targetTimeStr} - {validationResult.targetEndTimeStr})! يرجى اختيار وقت آخر.</span>
+                      </div>
+                    )}
+
+                    {/* 3. Player Schedule Conflict */}
+                    {validationResult.playerConflict && (
+                      <div style={{
+                        background: '#FFFBEB',
+                        border: '1.5px solid #F59E0B',
+                        borderRadius: '10px',
+                        padding: '10px 14px',
+                        color: '#92400E',
+                        fontSize: '0.82rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800 }}>
+                          <AlertTriangle size={18} color="#D97706" />
+                          <span>تعارض في جدول اللاعبين!</span>
+                        </div>
+                        <div style={{ fontSize: '0.78rem' }}>
+                          اللاعب <b>{validationResult.playerConflict.playerName}</b> مجدول في مباراة أخرى (<b>#{validationResult.playerConflict.match.matchNumber}</b>) في نفس التوقيت على جهاز {validationResult.playerConflict.match.consoleId} ({validationResult.playerConflict.sched.timeStr})!
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 4. Break Warning */}
+                    {validationResult.breakConflict && (
+                      <div style={{
+                        background: '#FEF3C7',
+                        border: '1px solid #FCD34D',
+                        borderRadius: '8px',
+                        padding: '8px 12px',
+                        fontSize: '0.76rem',
+                        color: '#92400E',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}>
+                        <AlertCircle size={15} color="#D97706" />
+                        <span>تنبيه: هذا التوقيت يتزامن مع فترة استراحة الصالة ({validationResult.breakConflict.from} - {validationResult.breakConflict.to}).</span>
+                      </div>
+                    )}
+
+                    {/* 5. Success Availability Confirmation */}
+                    {validationResult.isValid && (
+                      <div style={{
+                        background: '#F0FDF4',
+                        border: '1px solid #86EFAC',
+                        borderRadius: '8px',
+                        padding: '8px 12px',
+                        fontSize: '0.78rem',
+                        color: '#166534',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        fontWeight: 700
+                      }}>
+                        <CheckCircle2 size={16} color="#16A34A" />
+                        <span>الموعد مؤكد ومتاح على جهاز {editedConsole} من {validationResult.targetTimeStr} إلى {validationResult.targetEndTimeStr} بدون أي تعارض.</span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Save Confirmation Message */}
                 {saveSuccess && (
@@ -629,8 +995,17 @@ export default function AdminAdjustMatchModal({
                     type="button"
                     className="btn btn-primary"
                     onClick={handleSave}
-                    disabled={isSaving}
-                    style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 20px', fontWeight: 800 }}
+                    disabled={isSaving || (validationResult.hasCustomTime && !validationResult.isValid)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 20px',
+                      fontWeight: 800,
+                      opacity: (validationResult.hasCustomTime && !validationResult.isValid) ? 0.5 : 1,
+                      cursor: (validationResult.hasCustomTime && !validationResult.isValid) ? 'not-allowed' : 'pointer'
+                    }}
+                    title={validationResult.hasCustomTime && !validationResult.isValid ? 'يرجى حل التعارض في الجهاز أو اللاعبين للحفظ' : ''}
                   >
                     <Check size={16} />
                     <span>{isSaving ? 'جاري المزامنة والحفظ...' : 'حفظ وتحديث المباراة فوراً'}</span>
