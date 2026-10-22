@@ -139,44 +139,33 @@ export function calculateFixedMatchSchedule(dayMatches, startTimeStr = '18:00', 
 
   const result = {};
   Object.entries(consoleQueues).forEach(([cid, queue]) => {
-    // 1. Precompute strict baseline sequential timeline slots for this console queue
-    // Every match retains its natural slot order (e.g. 18:00, 18:12, 18:24...)
+    // 1. Regular sequential matches (without customTime) run continuously without gaps or shifts
+    const regularMatches = queue.filter(m => !m.customTime);
     let cursorMins = startMins;
-    const baselineSlots = queue.map(() => {
+    regularMatches.forEach(m => {
       const slotStart = adjustForBreaks(cursorMins);
       const slotEnd = slotStart + matchDurationMins;
+      result[m.id] = {
+        startMins: slotStart,
+        endMins: slotEnd,
+        timeStr: formatMinsToTime12(slotStart),
+        endTimeStr: formatMinsToTime12(slotEnd),
+        isCustom: false
+      };
       cursorMins = slotEnd;
-      return { startMins: slotStart, endMins: slotEnd };
     });
 
-    // 2. Assign times strictly:
-    //    - If a match has an explicit customTime, pin it to customTime.
-    //    - Otherwise, use the baseline slot for its queue position.
-    //    CRITICAL: Never advance cursorMins or shift any other match because of a customTime!
-    queue.forEach((m, idx) => {
-      if (m.customTime) {
-        const customStart = parseTimeToMins(m.customTime);
-        const slotEnd = customStart + matchDurationMins;
-        result[m.id] = {
-          startMins: customStart,
-          endMins: slotEnd,
-          timeStr: formatMinsToTime12(customStart),
-          endTimeStr: formatMinsToTime12(slotEnd),
-          isCustom: true
-        };
-      } else {
-        const slot = baselineSlots[idx] || {
-          startMins: startMins + idx * matchDurationMins,
-          endMins: startMins + (idx + 1) * matchDurationMins
-        };
-        result[m.id] = {
-          startMins: slot.startMins,
-          endMins: slot.endMins,
-          timeStr: formatMinsToTime12(slot.startMins),
-          endTimeStr: formatMinsToTime12(slot.endMins),
-          isCustom: false
-        };
-      }
+    // 2. Custom-timed matches are pinned directly to their exact scheduled times
+    queue.filter(m => m.customTime).forEach(m => {
+      const customStart = parseTimeToMins(m.customTime);
+      const slotEnd = customStart + matchDurationMins;
+      result[m.id] = {
+        startMins: customStart,
+        endMins: slotEnd,
+        timeStr: formatMinsToTime12(customStart),
+        endTimeStr: formatMinsToTime12(slotEnd),
+        isCustom: true
+      };
     });
   });
 
@@ -603,9 +592,17 @@ export function getConsoleStatusMap(matches, consolesCount = 5, minDuration = 10
   }
 
   for (let c = 1; c <= consolesCount; c++) {
+    // Sort matches on this console strictly chronologically by scheduled start time!
     const consoleMatches = matches
       .filter(m => m.consoleId === c)
-      .sort((a, b) => (a.orderOnConsole || 0) - (b.orderOnConsole || 0));
+      .sort((a, b) => {
+        const schedA = fixedSchedule[a.id];
+        const schedB = fixedSchedule[b.id];
+        const timeA = schedA?.startMins ?? (a.customTime ? parseTimeToMins(a.customTime) : (a.orderOnConsole || 0) * 12 + 1080);
+        const timeB = schedB?.startMins ?? (b.customTime ? parseTimeToMins(b.customTime) : (b.orderOnConsole || 0) * 12 + 1080);
+        if (timeA !== timeB) return timeA - timeB;
+        return (a.orderOnConsole || 0) - (b.orderOnConsole || 0);
+      });
 
     let current = null;
     let nextMatch = null;
@@ -706,6 +703,53 @@ export function getConsoleStatusMap(matches, consolesCount = 5, minDuration = 10
     };
   }
   return map;
+}
+
+/**
+ * Synchronize orderOnConsole across all matches to match strictly chronological queue time
+ */
+export function resequenceMatchesQueueOrder(matches, config = null) {
+  if (!Array.isArray(matches) || matches.length === 0) return matches;
+
+  const consolesCount = Number(config?.consolesCount) || 5;
+  const minDuration = Number(config?.minMatchDuration) || 10;
+  const maxDuration = Number(config?.maxMatchDuration) || 15;
+  const avgDuration = Math.round((minDuration + maxDuration) / 2);
+
+  // Group matches by day
+  const distinctDays = [...new Set(matches.map(m => m.dayNumber || 1))];
+  const fullSchedule = {};
+
+  distinctDays.forEach(d => {
+    const dayMatches = matches.filter(m => (m.dayNumber || 1) === d);
+    const isKnockout = dayMatches.some(m => m.stage && m.stage !== 'group' && !m.groupId);
+    const dayKey = isKnockout ? 'knockout' : d;
+    const startTime = config?.dayStartTimes?.[dayKey] || config?.dayStartTimes?.[d] || '18:00';
+    const breaks = config?.dayBreaks?.[dayKey] || config?.dayBreaks?.[d] || [];
+    const sched = calculateFixedMatchSchedule(dayMatches, startTime, avgDuration, breaks);
+    Object.assign(fullSchedule, sched);
+  });
+
+  // Re-number orderOnConsole chronologically per day and per console
+  const resequenced = matches.map(m => ({ ...m }));
+
+  distinctDays.forEach(d => {
+    for (let c = 1; c <= consolesCount; c++) {
+      const cMatches = resequenced.filter(m => (m.dayNumber || 1) === d && (m.consoleId || 1) === c);
+      cMatches.sort((a, b) => {
+        const timeA = fullSchedule[a.id]?.startMins ?? (a.customTime ? parseTimeToMins(a.customTime) : (a.orderOnConsole || 0) * 12 + 1080);
+        const timeB = fullSchedule[b.id]?.startMins ?? (b.customTime ? parseTimeToMins(b.customTime) : (b.orderOnConsole || 0) * 12 + 1080);
+        if (timeA !== timeB) return timeA - timeB;
+        return (a.orderOnConsole || 0) - (b.orderOnConsole || 0);
+      });
+
+      cMatches.forEach((m, idx) => {
+        m.orderOnConsole = idx + 1;
+      });
+    }
+  });
+
+  return resequenced;
 }
 
 export function calculateGroupStandings(group, allMatches, participantsMap, config) {

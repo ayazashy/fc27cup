@@ -48,6 +48,7 @@ import {
   getAdminNavigationUrl,
   getPublicNavigationUrl
 } from './utils/securityGate';
+import { resequenceMatchesQueueOrder } from './utils/tournamentEngine';
 
 const STORAGE_KEY = 'ksu_fc27_tournament_state_v1';
 const STORAGE_NEXT_REFRESH_KEY = 'fc27_public_next_refresh_at';
@@ -596,8 +597,26 @@ export default function App() {
 
   // Main Admin direct match schedule (time & day) updater
   const handleAdminUpdateMatchSchedule = async (updatedMatch) => {
-    setMatches(prev => prev.map(m => m.id === updatedMatch.id ? updatedMatch : m));
-    await handleAtomicMatchUpdate([updatedMatch], `جاري مزامنة تعديل موعد ويوم المباراة #${updatedMatch.matchNumber} سحابياً...`);
+    // 1. Incorporate updated match into list
+    const nextMatches = matches.map(m => m.id === updatedMatch.id ? updatedMatch : m);
+    // 2. Resequence orderOnConsole chronologically according to scheduled match times
+    const syncedMatches = resequenceMatchesQueueOrder(nextMatches, config);
+    setMatches(syncedMatches);
+
+    // 3. Identify all matches that had time, console, day, or orderOnConsole changed
+    const changedMatches = syncedMatches.filter(m => {
+      const orig = matches.find(old => old.id === m.id);
+      if (!orig) return true;
+      return orig.customTime !== m.customTime || 
+             orig.consoleId !== m.consoleId || 
+             orig.dayNumber !== m.dayNumber || 
+             orig.orderOnConsole !== m.orderOnConsole;
+    });
+
+    await handleAtomicMatchUpdate(
+      changedMatches.length > 0 ? changedMatches : [updatedMatch],
+      `جاري مزامنة تعديل موعد وترتيب طابور المباراة #${updatedMatch.matchNumber} سحابياً...`
+    );
   };
 
   const handleAtomicTournamentUpdate = async (patchOrFn, actionMessage = 'جاري مزامنة وتأمين حفظ البيانات...') => {
