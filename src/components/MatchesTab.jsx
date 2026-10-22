@@ -517,7 +517,7 @@ export default function MatchesTab({
           {/* Consoles Grid: Strictly separated per day with single console filter option */}
           <div style={{ 
             display: 'grid', 
-            gridTemplateColumns: singleConsoleFilter !== 'all' ? '1fr' : 'repeat(auto-fit, minmax(310px, 1fr))', 
+            gridTemplateColumns: singleConsoleFilter !== 'all' ? '1fr' : 'repeat(auto-fit, minmax(340px, 1fr))', 
             gap: '16px' 
           }}>
             {(singleConsoleFilter === 'all' 

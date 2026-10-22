@@ -525,22 +525,13 @@ export default function App() {
           zIndex: 40,
           boxShadow: 'var(--shadow-sm)'
         }}>
-          {/* Brand */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {/* Brand: Only large official competition logo */}
+          <div style={{ display: 'flex', alignItems: 'center' }}>
             <img 
               src={logoUrl} 
               alt="شعار كأس السكن FC27" 
-              style={{ height: '42px', width: 'auto', objectFit: 'contain' }} 
+              style={{ height: '64px', width: 'auto', objectFit: 'contain' }} 
             />
-            <div>
-              <h1 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--ksu-green)', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Trophy size={18} style={{ color: 'var(--trophy-gold)' }} />
-                كأس السكن: FC27
-              </h1>
-              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
-                سكن الطلاب — جامعة الملك سعود
-              </p>
-            </div>
           </div>
 
           {/* Action Bar */}
@@ -710,15 +701,15 @@ export default function App() {
           gap: '10px',
           boxShadow: 'var(--shadow-sm)'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <img src={logoUrl} alt="شعار البطولة" style={{ height: '36px', width: 'auto' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <img src={logoUrl} alt="شعار البطولة" style={{ height: '54px', width: 'auto', objectFit: 'contain' }} />
             <div>
               <div style={{ fontWeight: 800, fontSize: '0.98rem', color: 'var(--ksu-green)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span>🎮 بوابة منظم الصالة والمباريات</span>
                 <span className="badge badge-green" style={{ fontSize: '0.7rem' }}>منظم معتمد</span>
               </div>
               <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>
-                كأس السكن: FC27 • إدارة الطوابير، رصد النتائج، وشجرة الإقصائيات
+                إدارة الطوابير، رصد النتائج، وشجرة الإقصائيات
               </div>
             </div>
           </div>

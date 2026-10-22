@@ -36,33 +36,55 @@ export default function KnockoutTree({
 
   const knockoutMatches = syncedMatches.filter(m => m.stage !== 'group');
 
-  // Identify distinct rounds in chronological order
+  // Canonical Stage Configuration & Tournament Hierarchy
+  const STAGE_ORDER = ['r64', 'r32', 'r16', 'qf', 'sf', 'final'];
+  const STAGE_CONFIG = {
+    r64: { title: 'دور الـ 64', shortTitle: 'دوري 64' },
+    r32: { title: 'دور الـ 32', shortTitle: 'دوري 32' },
+    r16: { title: 'دور الـ 16', shortTitle: 'دوري 16' },
+    qf: { title: 'ربع النهائي', shortTitle: 'ربع النهائي' },
+    sf: { title: 'نصف النهائي', shortTitle: 'نصف النهائي' },
+    final: { title: 'المباراة النهائية 🏆', shortTitle: 'النهائي 🏆' }
+  };
+
+  // Identify distinct rounds in strict chronological tournament order
   const rounds = React.useMemo(() => {
-    const rMap = {};
-    knockoutMatches.forEach(m => {
-      const rIdx = m.roundIndex ?? 0;
-      if (!rMap[rIdx]) {
-        let label = 'دور إقصائي';
-        let short = 'دور';
-        if (m.stage === 'r64') { label = 'دور الـ 64'; short = 'دوري 64'; }
-        else if (m.stage === 'r32') { label = 'دور الـ 32'; short = 'دوري 32'; }
-        else if (m.stage === 'r16') { label = 'دور الـ 16'; short = 'دوري 16'; }
-        else if (m.stage === 'qf') { label = 'ربع النهائي'; short = 'ربع النهائي'; }
-        else if (m.stage === 'sf') { label = 'نصف النهائي'; short = 'نصف النهائي'; }
-        else if (m.stage === 'final') { label = 'المباراة النهائية 🏆'; short = 'النهائي 🏆'; }
+    const presentStages = STAGE_ORDER.filter(st => knockoutMatches.some(m => m.stage === st));
+    
+    // Fallback if stages are non-standard
+    if (presentStages.length === 0 && knockoutMatches.length > 0) {
+      const rMap = {};
+      knockoutMatches.forEach(m => {
+        const rIdx = m.roundIndex ?? 0;
+        if (!rMap[rIdx]) {
+          rMap[rIdx] = {
+            roundIndex: rIdx,
+            stage: m.stage || 'ko',
+            title: `الدور الإقصائي ${rIdx + 1}`,
+            shortTitle: `دور ${rIdx + 1}`,
+            matches: []
+          };
+        }
+        rMap[rIdx].matches.push(m);
+      });
+      return Object.values(rMap).sort((a, b) => a.roundIndex - b.roundIndex);
+    }
 
-        rMap[rIdx] = {
-          roundIndex: rIdx,
-          stage: m.stage,
-          title: label,
-          shortTitle: short,
-          matches: []
-        };
-      }
-      rMap[rIdx].matches.push(m);
+    return presentStages.map((stageKey, rIdx) => {
+      const stageMatches = knockoutMatches
+        .filter(m => m.stage === stageKey)
+        .sort((a, b) => (a.matchIndexInRound ?? 0) - (b.matchIndexInRound ?? 0) || (a.matchNumber || 0) - (b.matchNumber || 0));
+
+      const conf = STAGE_CONFIG[stageKey] || { title: stageKey, shortTitle: stageKey };
+
+      return {
+        roundIndex: rIdx,
+        stage: stageKey,
+        title: conf.title,
+        shortTitle: conf.shortTitle,
+        matches: stageMatches
+      };
     });
-
-    return Object.values(rMap).sort((a, b) => a.roundIndex - b.roundIndex);
   }, [knockoutMatches]);
 
   const totalRounds = rounds.length;
@@ -127,6 +149,10 @@ export default function KnockoutTree({
     if (focusedStageIndex >= totalRounds - 1) dynamicMinHeight = '280px'; // Final only
     else if (focusedStageIndex >= totalRounds - 2) dynamicMinHeight = '360px'; // SF & Final
     else if (focusedStageIndex >= totalRounds - 3) dynamicMinHeight = '480px'; // QF, SF, Final
+  } else if (knockoutMatches.some(m => m.stage === 'r32')) {
+    dynamicMinHeight = '920px';
+  } else if (knockoutMatches.some(m => m.stage === 'r64')) {
+    dynamicMinHeight = '1400px';
   }
 
   return (

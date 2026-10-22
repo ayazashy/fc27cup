@@ -266,10 +266,12 @@ export default function ScheduleDaysTab({
 
     const stageLabel = (m) => {
       if (m.stage === 'group') return 'دور المجموعات';
+      if (m.stage === 'r64') return 'دور الـ 64';
+      if (m.stage === 'r32') return 'دور الـ 32';
       if (m.stage === 'r16') return 'دور الـ 16';
       if (m.stage === 'qf') return 'ربع النهائي';
       if (m.stage === 'sf') return 'نصف النهائي';
-      if (m.stage === 'final') return 'النهائي';
+      if (m.stage === 'final') return 'المباراة النهائية 🏆';
       return m.stage || 'إقصائيات';
     };
 

@@ -42,17 +42,11 @@ export default function Header({
             src={logoUrl} 
             alt="شعار بطولة كأس السكن FC27" 
             className="brand-logo" 
+            style={{ height: '64px', width: 'auto', objectFit: 'contain' }}
             onError={(e) => {
               e.currentTarget.style.display = 'none';
             }}
           />
-          <div className="brand-text">
-            <h1>
-              <Trophy size={20} style={{ color: 'var(--trophy-gold)' }} />
-              كأس السكن: FC27
-            </h1>
-            <p>سكن الطلاب — جامعة الملك سعود</p>
-          </div>
         </div>
 
         {/* Quick Tournament Metrics & Cloud Actions */}

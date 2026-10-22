@@ -86,16 +86,16 @@ export default function AdminLockScreen({
         zIndex: 10
       }}>
         {/* Competition Logo */}
-        <div style={{ marginBottom: '18px' }}>
+        <div style={{ marginBottom: '20px' }}>
           <img 
             src={logoUrl} 
             alt="شعار كأس السكن FC27" 
             style={{ 
-              height: '84px', 
+              height: '105px', 
               width: 'auto', 
               objectFit: 'contain',
               margin: '0 auto',
-              filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.1))'
+              filter: 'drop-shadow(0 6px 12px rgba(0,0,0,0.12))'
             }} 
           />
         </div>
@@ -116,15 +116,6 @@ export default function AdminLockScreen({
           <KeyRound size={13} color="#059669" />
           <span>منطقة الكادر الإداري (/KSUHTSTAFF)</span>
         </div>
-
-        <h1 style={{
-          fontSize: '1.45rem',
-          fontWeight: 900,
-          color: '#0F172A',
-          marginBottom: '6px'
-        }}>
-          كأس السكن: FC27
-        </h1>
 
         <p style={{
           fontSize: '0.85rem',

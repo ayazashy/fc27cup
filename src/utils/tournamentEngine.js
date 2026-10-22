@@ -655,7 +655,8 @@ export function calculateGroupStandings(group, allMatches, participantsMap, conf
   const pointsLoss = Number(config.pointsLoss ?? 0);
 
   const statsMap = {};
-  group.playerIds.forEach(pId => {
+  const groupPlayerIds = group.playerIds || group.participantIds || [];
+  groupPlayerIds.forEach(pId => {
     const player = participantsMap[pId] || { name: 'مشارك', team: '—' };
     statsMap[pId] = {
       playerId: pId,
@@ -1186,8 +1187,13 @@ export function syncKnockoutTreeWithGuarantees(matches, groups, participantsMap,
   const bestRunnersUpData = calculateBestRunnersUp(groups, matches, participantsMap, config);
   const runnersUpList = bestRunnersUpData.runnersUp || [];
 
+  // Determine first knockout stage dynamically (e.g. 'r32' or 'r16')
+  const stageHierarchy = ['r64', 'r32', 'r16', 'qf', 'sf', 'final'];
+  const presentStages = stageHierarchy.filter(st => matches.some(m => m.stage === st));
+  const firstStage = presentStages[0] || 'r16';
+
   return matches.map(m => {
-    if (m.stage === 'group' || m.roundIndex !== 0) return m;
+    if (m.stage === 'group' || m.stage !== firstStage) return m;
 
     let updatedP1 = m.player1Id;
     let updatedP2 = m.player2Id;

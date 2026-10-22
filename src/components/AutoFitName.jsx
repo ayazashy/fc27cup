@@ -8,8 +8,8 @@ import React, { useRef, useState, useLayoutEffect, useEffect } from 'react';
  */
 export default function AutoFitName({ 
   text, 
-  maxFontSize = 0.88, // in rem
-  minFontSize = 0.46, // in rem
+  maxFontSize = 1.05, // in rem (~16.8px, maximized, bold & prominent)
+  minFontSize = 0.80, // in rem (~12.8px, clear and readable)
   compact = false,
   color = 'var(--text-main)',
   fontWeight = 800,
@@ -19,21 +19,10 @@ export default function AutoFitName({
   const containerRef = useRef(null);
   const textRef = useRef(null);
 
-  const baseSize = compact ? 0.78 : maxFontSize;
+  const baseSize = compact ? 0.88 : maxFontSize;
 
-  // Immediate heuristic calculation based on character count to prevent any flash of layout
-  const computeInitialSize = (str) => {
-    if (!str) return baseSize;
-    const len = str.trim().length;
-    if (len <= 10) return baseSize;
-    if (len <= 14) return Math.max(minFontSize, baseSize * 0.85);
-    if (len <= 18) return Math.max(minFontSize, baseSize * 0.72);
-    if (len <= 23) return Math.max(minFontSize, baseSize * 0.62);
-    if (len <= 28) return Math.max(minFontSize, baseSize * 0.55);
-    return Math.max(minFontSize, baseSize * 0.48);
-  };
-
-  const [fontSize, setFontSize] = useState(() => computeInitialSize(text));
+  // Start with full baseSize - do not prematurely shrink based on character count
+  const [fontSize, setFontSize] = useState(baseSize);
   const [scale, setScale] = useState(1);
 
   // Exact measurement & auto-shrink adjustment via useLayoutEffect
@@ -42,6 +31,7 @@ export default function AutoFitName({
     const textEl = textRef.current;
     if (!container || !textEl || !text) return;
 
+    // Reset to baseSize first if text changed
     const containerWidth = container.clientWidth;
     const scrollWidth = textEl.scrollWidth;
 
@@ -49,20 +39,16 @@ export default function AutoFitName({
       const ratio = (containerWidth - 1) / scrollWidth;
       const targetSize = Math.max(minFontSize, fontSize * ratio);
       
-      if (Math.abs(targetSize - fontSize) > 0.015) {
+      if (Math.abs(targetSize - fontSize) > 0.01) {
         setFontSize(targetSize);
       } else if (ratio < 0.99) {
         // If already at minFontSize and still slightly exceeds, apply smooth CSS transform scale
-        setScale(Math.max(0.65, ratio));
+        setScale(Math.max(0.78, ratio));
       }
-    } else if (containerWidth > 0 && scrollWidth <= containerWidth * 0.75 && fontSize < baseSize) {
-      // Container expanded or text shortened: scale font size back up
-      const ratio = (containerWidth - 1) / scrollWidth;
-      const targetSize = Math.min(baseSize, fontSize * ratio * 0.95);
-      if (targetSize > fontSize + 0.02) {
-        setFontSize(targetSize);
-        setScale(1);
-      }
+    } else if (containerWidth > 0 && scrollWidth <= containerWidth * 0.85 && fontSize < baseSize) {
+      // Container has plenty of space: restore baseSize
+      setFontSize(baseSize);
+      setScale(1);
     }
   }, [text, fontSize, baseSize, minFontSize]);
 
