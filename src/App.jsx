@@ -85,14 +85,14 @@ const DEFAULT_CONFIG = {
     1: todayIso,
     2: tomorrowIso,
     3: dayAfterIso,
-    knockout: tomorrowIso
+    knockout: dayAfterIso
   },
   // Admin-configurable fixed start time per day (HH:MM in 24h format)
   dayStartTimes: {
     1: '18:00',
     2: '18:00',
     3: '18:00',
-    knockout: '17:00'
+    knockout: '18:00'
   },
   // Break intervals per day: [{from:"HH:MM", to:"HH:MM"}]
   dayBreaks: {

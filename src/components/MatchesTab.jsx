@@ -22,7 +22,7 @@ import ScoreModal from './ScoreModal';
 import WhatsAppReminderModal from './WhatsAppReminderModal';
 import SportsMatchCard from './SportsMatchCard';
 import AutoFitName from './AutoFitName';
-import { getConsoleStatusMap, rebalanceRemainingMatches, syncKnockoutTreeWithGuarantees } from '../utils/tournamentEngine';
+import { getConsoleStatusMap, rebalanceRemainingMatches, syncKnockoutTreeWithGuarantees, propagateWinnerInTree } from '../utils/tournamentEngine';
 import { getTeamLogoUrl, DEFAULT_UNKNOWN_LOGO } from '../utils/footballTeams';
 
 export default function MatchesTab({ 
@@ -93,13 +93,18 @@ export default function MatchesTab({
   const dayDates = config.dayDates || {
     1: todayDateStr,
     2: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
-    knockout: new Date(Date.now() + 86400000).toISOString().slice(0, 10)
+    3: new Date(Date.now() + 172800000).toISOString().slice(0, 10),
+    knockout: new Date(Date.now() + 172800000).toISOString().slice(0, 10)
   };
+
+  // Support Day 3 (Finals / Knockout stage)
+  const totalDays = Math.max(3, numTournamentDays);
 
   // Determine which day matches today's date automatically
   let autoTodayDay = 1;
-  for (let d = 1; d <= numTournamentDays; d++) {
-    if (dayDates[d] === todayDateStr) {
+  for (let d = 1; d <= totalDays; d++) {
+    const dDate = dayDates[d] || (d === 3 ? dayDates.knockout : null);
+    if (dDate === todayDateStr) {
       autoTodayDay = d;
       break;
     }
@@ -113,14 +118,21 @@ export default function MatchesTab({
   const viewConsoleDay = dayFilter === 'all' ? effectiveActiveDay : Number(dayFilter);
 
   // Status flags for the viewed day in consoles view
-  const isViewDayActive = (config.activeDayOverride === viewConsoleDay) || (dayDates[viewConsoleDay] === todayDateStr);
-  const isFutureDay = !isViewDayActive && dayDates[viewConsoleDay] && (dayDates[viewConsoleDay] > todayDateStr);
-  const isPastDay = !isViewDayActive && dayDates[viewConsoleDay] && (dayDates[viewConsoleDay] < todayDateStr);
+  const viewDayDate = dayDates[viewConsoleDay] || (viewConsoleDay === 3 ? dayDates.knockout : null);
+  const isViewDayActive = (config.activeDayOverride === viewConsoleDay) || (viewDayDate === todayDateStr);
+  const isFutureDay = !isViewDayActive && viewDayDate && (viewDayDate > todayDateStr);
+  const isPastDay = !isViewDayActive && viewDayDate && (viewDayDate < todayDateStr);
 
   // STRICT PARTITIONING: Filter matches strictly for viewConsoleDay!
-  // Day 1 and Day 2 matches never intersect in the console queues.
+  // Day 1 and Day 2 matches never intersect in the console queues. Day 3 hosts Knockout / Finals.
   const consoleDayMatches = useMemo(() => {
-    return matches.filter(m => (m.dayNumber || 1) === viewConsoleDay);
+    return matches.filter(m => {
+      const matchDay = m.dayNumber || 1;
+      if (viewConsoleDay === 3) {
+        return matchDay === 3 || (m.stage && m.stage !== 'group');
+      }
+      return matchDay === viewConsoleDay && (!m.stage || m.stage === 'group');
+    });
   }, [matches, viewConsoleDay]);
 
   // Compute console status map ONLY for this specific day's matches!
@@ -148,9 +160,15 @@ export default function MatchesTab({
 
   const handleSaveScore = async (updatedMatch) => {
     let updated = matches.map(m => m.id === updatedMatch.id ? updatedMatch : m);
+    // If it's a knockout match, advance winner to the next round in the tree!
+    if (updatedMatch.stage && updatedMatch.stage !== 'group') {
+      updated = propagateWinnerInTree(updated, updatedMatch);
+    }
     // Dynamically balance queued matches ONLY within that match's day to keep days strictly partitioned
     const matchDay = updatedMatch.dayNumber || 1;
-    updated = rebalanceRemainingMatches(updated, consolesCount, matchDay);
+    if (updatedMatch.stage === 'group') {
+      updated = rebalanceRemainingMatches(updated, consolesCount, matchDay);
+    }
     if (groups && groups.length > 0) {
       updated = syncKnockoutTreeWithGuarantees(updated, groups, participantsMap, config);
     }
@@ -158,7 +176,7 @@ export default function MatchesTab({
     if (onAtomicMatchUpdate) {
       await onAtomicMatchUpdate(updated, `جاري اعتماد نتيجة المباراة #${updatedMatch.matchNumber} والمزامنة الفورية...`);
     }
-    onNotify(`تم اعتماد نتيجة المباراة #${updatedMatch.matchNumber}! تم تلقائياً موازنة طوابير اليوم ${matchDay} وتحديث المواعيد التقديرية`, 'success');
+    onNotify(`تم اعتماد نتيجة المباراة #${updatedMatch.matchNumber}! تم تلقائياً تحديث المواعيد وحالة الصالة`, 'success');
   };
 
   const handleManualRebalance = async () => {
@@ -206,7 +224,15 @@ export default function MatchesTab({
     if (stageFilter === 'knockout' && m.stage === 'group') return false;
     if (statusFilter !== 'all' && m.status !== statusFilter) return false;
     if (consoleFilter !== 'all' && String(m.consoleId) !== String(consoleFilter)) return false;
-    if (dayFilter !== 'all' && String(m.dayNumber || 1) !== String(dayFilter)) return false;
+    if (dayFilter !== 'all') {
+      if (dayFilter === '3') {
+        const isDay3 = (m.dayNumber || 1) === 3 || (m.stage && m.stage !== 'group');
+        if (!isDay3) return false;
+      } else {
+        if (String(m.dayNumber || 1) !== String(dayFilter)) return false;
+        if (m.stage && m.stage !== 'group') return false;
+      }
+    }
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
@@ -275,10 +301,11 @@ export default function MatchesTab({
               >
                 كل الأيام
               </button>
-              {Array.from({ length: numTournamentDays }, (_, i) => i + 1).map(d => {
-                const dDate = dayDates[d];
+              {Array.from({ length: totalDays }, (_, i) => i + 1).map(d => {
+                const dDate = dayDates[d] || (d === 3 ? dayDates.knockout : null);
                 const isDActive = (config.activeDayOverride === d) || (dDate === todayDateStr);
                 const isDFuture = !isDActive && dDate && dDate > todayDateStr;
+                const label = d === 3 ? 'اليوم 3 (النهائيات 🏆)' : `اليوم ${d}`;
                 return (
                   <button 
                     key={d}
@@ -286,7 +313,7 @@ export default function MatchesTab({
                     style={{ padding: '4px 10px', border: 'none', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '5px' }}
                     onClick={() => setDayFilter(String(d))}
                   >
-                    <span>اليوم {d}</span>
+                    <span>{label}</span>
                     <span style={{ fontSize: '0.7rem' }}>
                       {isDActive ? '🟢' : (isDFuture ? '⏳' : '✓')}
                     </span>
@@ -439,14 +466,14 @@ export default function MatchesTab({
                 >
                   تلقائي بحسب التاريخ ({autoTodayDay ? `اليوم ${autoTodayDay}` : 'غير محدد'})
                 </button>
-                {Array.from({ length: numTournamentDays }, (_, i) => i + 1).map(d => (
+                {Array.from({ length: totalDays }, (_, i) => i + 1).map(d => (
                   <button 
                     key={d}
                     className={`btn btn-sm ${config.activeDayOverride === d ? 'btn-primary' : 'btn-secondary'}`}
                     style={{ padding: '4px 10px', border: 'none', fontSize: '0.78rem' }}
                     onClick={() => handleSetActiveDayOverride(d)}
                   >
-                    تفعيل اليوم {d} يدوياً
+                    {d === 3 ? 'تفعيل اليوم 3 (النهائيات) يدوياً' : `تفعيل اليوم ${d} يدوياً`}
                   </button>
                 ))}
               </div>
@@ -485,7 +512,7 @@ export default function MatchesTab({
               <CalendarDays size={22} color={isViewDayActive ? '#059669' : (isFutureDay ? '#2563EB' : '#64748B')} />
               <div>
                 <div style={{ fontWeight: 800, fontSize: '0.98rem', color: isViewDayActive ? '#065F46' : (isFutureDay ? '#1E40AF' : '#334155'), display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span>طوابير أجهزة الصالة — اليوم {viewConsoleDay}</span>
+                  <span>طوابير أجهزة الصالة — {viewConsoleDay === 3 ? 'اليوم 3 (نهائيات البطولة 🏆)' : `اليوم ${viewConsoleDay}`}</span>
                   <span className={`badge ${isViewDayActive ? 'badge-green' : (isFutureDay ? 'badge-blue' : 'badge-gray')}`} style={{ fontSize: '0.75rem', fontWeight: 800 }}>
                     {isViewDayActive ? '🟢 نشط ومباشر الآن (Live)' : (isFutureDay ? '⏳ يوم مستقبلي (قيد الانتظار)' : '✓ يوم سابق')}
                   </span>
@@ -494,7 +521,7 @@ export default function MatchesTab({
                   )}
                 </div>
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                  📅 التاريخ المجدول: <b className="numeric">{dayDates[viewConsoleDay] || 'غير محدد'}</b> 
+                  📅 التاريخ المجدول: <b className="numeric">{viewDayDate || 'غير محدد'}</b> 
                   {isViewDayActive 
                     ? ' • (مطابق لتاريخ اليوم الحالي، المباريات تعمل مباشرة باللون الأخضر)' 
                     : (isFutureDay 

@@ -86,19 +86,21 @@ export default function ScheduleDaysTab({
   const fixedScheduleByDay = useMemo(() => {
     const result = {};
     for (let d = 1; d <= selectedDaysCount; d++) {
-      const dayMatches = matches.filter(m => (m.dayNumber || 1) === d);
+      const dayMatches = matches.filter(m => (m.stage === 'group' || m.groupId) && (m.dayNumber || 1) === d);
       const startTime = config.dayStartTimes?.[d] || '18:00';
       const breaks = (config.dayBreaks?.[d] && config.dayBreaks[d].length > 0) ? config.dayBreaks[d] : [{ from: '19:00', to: '19:30' }];
       const avgDuration = Math.round(((Number(config.minMatchDuration) || 10) + (Number(config.maxMatchDuration) || 15)) / 2);
       result[d] = calculateFixedMatchSchedule(dayMatches, startTime, avgDuration, breaks);
     }
-    // Knockout day
+    // Knockout day (Day 3 / Finals)
     const koMatches = matches.filter(m => m.stage !== 'group' && !m.groupId);
     if (koMatches.length > 0) {
-      const startTime = config.dayStartTimes?.knockout || '17:00';
+      const startTime = config.dayStartTimes?.knockout || config.dayStartTimes?.[3] || '18:00';
       const breaks = (config.dayBreaks?.knockout && config.dayBreaks.knockout.length > 0) ? config.dayBreaks.knockout : [{ from: '19:00', to: '19:30' }];
       const avgDuration = Math.round(((Number(config.minMatchDuration) || 10) + (Number(config.maxMatchDuration) || 15)) / 2);
-      result['knockout'] = calculateFixedMatchSchedule(koMatches, startTime, avgDuration, breaks);
+      const koSched = calculateFixedMatchSchedule(koMatches, startTime, avgDuration, breaks);
+      result['knockout'] = koSched;
+      result[3] = koSched;
     }
     return result;
   }, [matches, selectedDaysCount, config.dayStartTimes, config.dayBreaks, config.minMatchDuration, config.maxMatchDuration]);

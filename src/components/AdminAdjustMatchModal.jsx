@@ -103,7 +103,7 @@ export default function AdminAdjustMatchModal({
     }
   }, [searchQuery, matches, filteredMatches]);
 
-  const tournamentDaysCount = Number(config?.tournamentDays) || 2;
+  const tournamentDaysCount = Math.max(3, Number(config?.tournamentDays) || 2);
   const consolesCount = Number(config?.consolesCount) || 5;
   const dayDates = config?.dayDates || {};
 
@@ -650,11 +650,15 @@ export default function AdminAdjustMatchModal({
                       onChange={(e) => setEditedDay(Number(e.target.value))}
                       style={{ width: '100%', padding: '6px 10px', fontSize: '0.85rem', fontWeight: 700 }}
                     >
-                      {Array.from({ length: tournamentDaysCount }, (_, i) => i + 1).map(d => (
-                        <option key={d} value={d}>
-                          اليوم {d} {dayDates[d] ? `(${dayDates[d]})` : ''}
-                        </option>
-                      ))}
+                      {Array.from({ length: tournamentDaysCount }, (_, i) => i + 1).map(d => {
+                        const dateStr = dayDates[d] || (d === 3 ? dayDates.knockout : '');
+                        const dayLabel = d === 3 ? 'اليوم 3 (النهائيات)' : `اليوم ${d}`;
+                        return (
+                          <option key={d} value={d}>
+                            {dayLabel} {dateStr ? `(${dateStr})` : ''}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
 

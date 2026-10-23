@@ -110,10 +110,12 @@ export default function TvDisplayTab({
   const todayDateStr = getTodayDateStr();
   const dayDates = config.dayDates || { 1: todayDateStr };
   const numTournamentDays = Number(config.tournamentDays) || 2;
+  const totalDays = Math.max(3, numTournamentDays);
 
   let autoTodayDay = 1;
-  for (let d = 1; d <= numTournamentDays; d++) {
-    if (dayDates[d] === todayDateStr) {
+  for (let d = 1; d <= totalDays; d++) {
+    const dDate = dayDates[d] || (d === 3 ? dayDates.knockout : null);
+    if (dDate === todayDateStr) {
       autoTodayDay = d;
       break;
     }
@@ -122,11 +124,18 @@ export default function TvDisplayTab({
   const effectiveActiveDay = config.activeDayOverride ? Number(config.activeDayOverride) : autoTodayDay;
   const [tvDay, setTvDay] = useState(effectiveActiveDay);
 
-  const isTvDayActive = (config.activeDayOverride === tvDay) || (dayDates[tvDay] === todayDateStr);
-  const isFutureDay = !isTvDayActive && dayDates[tvDay] && (dayDates[tvDay] > todayDateStr);
+  const tvDayDate = dayDates[tvDay] || (tvDay === 3 ? dayDates.knockout : null);
+  const isTvDayActive = (config.activeDayOverride === tvDay) || (tvDayDate === todayDateStr);
+  const isFutureDay = !isTvDayActive && tvDayDate && (tvDayDate > todayDateStr);
 
   const tvDayMatches = React.useMemo(() => {
-    return matches.filter(m => (m.dayNumber || 1) === tvDay);
+    return matches.filter(m => {
+      const matchDay = m.dayNumber || 1;
+      if (tvDay === 3) {
+        return matchDay === 3 || (m.stage && m.stage !== 'group');
+      }
+      return matchDay === tvDay && (!m.stage || m.stage === 'group');
+    });
   }, [matches, tvDay]);
 
   const consolesCount = Number(config.consolesCount) || 5;
@@ -715,10 +724,11 @@ export default function TvDisplayTab({
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>اختر اليوم:</span>
               <div style={{ display: 'flex', background: 'var(--bg-subtle)', padding: '3px', borderRadius: '8px' }}>
-                {Array.from({ length: numTournamentDays }, (_, i) => i + 1).map(d => {
-                  const dDate = dayDates[d];
+                {Array.from({ length: totalDays }, (_, i) => i + 1).map(d => {
+                  const dDate = dayDates[d] || (d === 3 ? dayDates.knockout : null);
                   const isDAct = (config.activeDayOverride === d) || (dDate === todayDateStr);
                   const isDFut = !isDAct && dDate && dDate > todayDateStr;
+                  const label = d === 3 ? 'اليوم 3 (النهائيات 🏆)' : `اليوم ${d}`;
                   return (
                     <button
                       key={d}
@@ -726,7 +736,7 @@ export default function TvDisplayTab({
                       style={{ padding: '4px 12px', border: 'none', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                       onClick={() => setTvDay(d)}
                     >
-                      <span>اليوم {d}</span>
+                      <span>{label}</span>
                       <span style={{ fontSize: '0.7rem' }}>
                         {isDAct ? '🟢' : (isDFut ? '⏳' : '✓')}
                       </span>
@@ -738,7 +748,7 @@ export default function TvDisplayTab({
 
             <div style={{ fontSize: '0.8rem', color: isTvDayActive ? '#059669' : (isFutureDay ? '#2563EB' : 'var(--text-muted)'), fontWeight: 700 }}>
               {isTvDayActive ? (
-                <span>🟢 اليوم {tvDay} — نشط الآن</span>
+                <span>🟢 {tvDay === 3 ? 'اليوم 3 (النهائيات)' : `اليوم ${tvDay}`} — نشط الآن</span>
               ) : (
                 <span>{isFutureDay ? `⏳ اليوم ${tvDay} (${dayDates[tvDay] || ''})` : `✓ اليوم ${tvDay} (منتهي)`}</span>
               )}

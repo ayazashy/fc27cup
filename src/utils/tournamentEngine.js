@@ -772,6 +772,9 @@ export function calculateGroupStandings(group, allMatches, participantsMap, conf
       gf: 0,
       ga: 0,
       gd: 0,
+      goalsFor: 0,
+      goalsAgainst: 0,
+      goalDifference: 0,
       points: 0,
       yellowCards: 0,
       redCards: 0
@@ -805,6 +808,13 @@ export function calculateGroupStandings(group, allMatches, participantsMap, conf
 
     p1.gd = p1.gf - p1.ga;
     p2.gd = p2.gf - p2.ga;
+
+    p1.goalsFor = p1.gf;
+    p1.goalsAgainst = p1.ga;
+    p1.goalDifference = p1.gd;
+    p2.goalsFor = p2.gf;
+    p2.goalsAgainst = p2.ga;
+    p2.goalDifference = p2.gd;
 
     if (m.status === 'walkover') {
       if (m.isDoubleWalkover || m.walkoverWinnerId === 'double') {
@@ -1010,11 +1020,14 @@ export function calculateBestRunnersUp(groups, allMatches, participantsMap, conf
         won: runnerUp.won || 0,
         drawn: runnerUp.drawn || 0,
         lost: runnerUp.lost || 0,
-        goalsFor: runnerUp.goalsFor || 0,
-        goalsAgainst: runnerUp.goalsAgainst || 0,
-        goalDifference: runnerUp.goalDifference || 0,
+        goalsFor: runnerUp.goalsFor ?? runnerUp.gf ?? 0,
+        goalsAgainst: runnerUp.goalsAgainst ?? runnerUp.ga ?? 0,
+        goalDifference: runnerUp.goalDifference ?? runnerUp.gd ?? 0,
         points: runnerUp.points || 0,
-        cards: runnerUp.cards || { yellow: 0, red: 0 },
+        cards: { 
+          yellow: runnerUp.yellowCards ?? runnerUp.cards?.yellow ?? 0, 
+          red: runnerUp.redCards ?? runnerUp.cards?.red ?? 0 
+        },
         isFinished: isGroupFinished,
         isGuaranteed: isGroupFinished
       });
@@ -1169,8 +1182,8 @@ export function generateKnockoutTree(groups, allMatches, participantsMap, config
   let matchNumberCounter = 200;
   let previousRoundMatches = [];
   const consolesCount = Math.max(1, Number(config.consolesCount) || 5);
-  const daysCount = Math.max(1, Number(config.daysCount) || 2);
-  const koDay = daysCount;
+  // Knockout finals stage is on Day 3 (after Day 1 & Day 2 group stages)
+  const koDay = Number(config.knockoutDay) || 3;
 
   const consoleCounters = {};
   for (let c = 1; c <= consolesCount; c++) {
@@ -1468,8 +1481,8 @@ export function splitMatchesIntoDays(matches, participants = [], daysCount = 2, 
       }
     });
 
-    // Knockout matches go to Day 2
-    koMatches.forEach(m => { matchDayMap[m.id] = 2; });
+    // Knockout matches go to Day 3 (Finals)
+    koMatches.forEach(m => { matchDayMap[m.id] = 3; });
   } else if (dCount === 3) {
     (circles[1] || []).forEach(m => { matchDayMap[m.id] = 1; });
     (circles[2] || []).forEach(m => { matchDayMap[m.id] = 2; });
